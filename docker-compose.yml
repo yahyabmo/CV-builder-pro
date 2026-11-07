@@ -1,0 +1,21 @@
+# CV Builder Pro avec Docker : rien d'autre à installer.
+#
+#   docker compose up -d      l'appli sur http://localhost:8000
+#   CVB_PORT=8010 docker compose up -d   sur http://localhost:8010, si le port 8000 est pris
+#   docker compose pull       la dernière version, puis « up -d » à nouveau
+#   docker compose down       l'arrêter (tes données restent dans le volume)
+#
+# L'appli n'a pas de mot de passe : elle n'écoute que sur cette machine (127.0.0.1).
+
+services:
+  cv-builder:
+    image: ghcr.io/yahyabmo/cv-builder-pro:latest
+    build: .
+    ports:
+      - "127.0.0.1:${CVB_PORT:-8000}:8000"
+    volumes:
+      - cv-builder-data:/data
+    restart: unless-stopped
+
+volumes:
+  cv-builder-data:

@@ -1,0 +1,121 @@
+name: Installation
+
+# ./install.sh sur des machines neuves, puis le raccourci et un clic dessus :
+# Linux (Ubuntu 22.04 et 24.04, Debian 13) avec .github/scripts/essai-installation.sh ;
+# Windows avec WSL (Ubuntu 24.04), essayé côté Windows (raccourcis, clic, arrêt).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - Makefile
+      - scripts/**
+      - assets/**
+      - backend/requirements*.txt
+      - frontend/package*.json
+      - .github/scripts/essai-installation.sh
+      - .github/workflows/install.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:24.04", "ubuntu:22.04", "debian:13"]
+    steps:
+      - uses: actions/checkout@v7
+      - name: install.sh sur ${{ matrix.image }} neuve
+        run: |
+          docker run --rm -v "$PWD":/src:ro "${{ matrix.image }}" bash -euxc '
+            apt-get update -q
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -q sudo git
+            useradd -m -s /bin/bash essai
+            echo "essai ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/essai
+            mkdir /home/essai/Desktop
+            cp -r /src /home/essai/CV-builder-pro
+            rm -rf /home/essai/CV-builder-pro/.git
+            chown -R essai: /home/essai
+            su - essai -c "cd CV-builder-pro && ./install.sh --sans-ouvrir"
+            su - essai -c "CV-builder-pro/.github/scripts/essai-installation.sh"
+          '
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DISTRO: Ubuntu-24.04
+    steps:
+      # Les scripts gardent leurs fins de ligne Linux (install.sh tourne dans WSL).
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Ubuntu-24.04
+          additional-packages: sudo
+
+      - name: Un utilisateur Ubuntu avec sudo, comme après « wsl --install »
+        run: |
+          wsl -d $env:DISTRO -u root -- bash -c "useradd -m -s /bin/bash essai && echo 'essai ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/essai"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: install.sh dans WSL
+        run: |
+          # --exec : sans passer par bash, qui mangerait les \ du chemin Windows.
+          $src = wsl -d $env:DISTRO -u essai --exec wslpath -u "$env:GITHUB_WORKSPACE"
+          if (-not $src) { throw "chemin du dépôt introuvable dans WSL" }
+          # Comme la commande du README : « cd » dans bash, pas « --cd ~ » (PowerShell 7
+          # remplace ~ par le dossier Windows, et WSL partirait dans /mnt/c/Users/…).
+          wsl -d $env:DISTRO -u essai -- bash -lc "cd && cp -r '$src' CV-builder-pro && rm -rf CV-builder-pro/.git && CV-builder-pro/install.sh --sans-ouvrir"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Raccourcis Windows, clic, compilation, arrêt
+        run: |
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          $programs = [Environment]::GetFolderPath('Programs')
+          $app = Join-Path $programs 'CV Builder Pro.lnk'
+          $stop = Join-Path $programs 'Arrêter CV Builder Pro.lnk'
+          $icon = Join-Path $env:LOCALAPPDATA 'CV Builder Pro\icone.ico'
+          foreach ($path in @((Join-Path $desktop 'CV Builder Pro.lnk'), $app, $stop, $icon)) {
+            if (-not (Test-Path -LiteralPath $path)) { throw "absent : $path" }
+          }
+          $link = (New-Object -ComObject WScript.Shell).CreateShortcut($app)
+          "Raccourci : $($link.TargetPath) $($link.Arguments)"
+          if ($link.IconLocation -notlike "$icon*") { throw "icône : $($link.IconLocation)" }
+
+          # Le clic sur l'icône du menu Démarrer.
+          Start-Process -FilePath $app
+          $up = $false
+          for ($i = 0; $i -lt 90 -and -not $up; $i++) {
+            try { $up = (Invoke-RestMethod http://localhost:8000/api/health -TimeoutSec 3).app -eq 'cv-builder-pro' } catch {}
+            if (-not $up) { Start-Sleep 2 }
+          }
+          if (-not $up) { throw "l'appli ne répond pas sur http://localhost:8000" }
+          $machine = Invoke-RestMethod http://localhost:8000/api/system/check
+          if (-not $machine.ok) { throw "machine : $($machine | ConvertTo-Json -Depth 5)" }
+          $pdf = Invoke-RestMethod -Method Post http://localhost:8000/api/cvs/base/compile -TimeoutSec 180
+          if (-not $pdf.ok -or $pdf.pages -ne 1) { throw "compilation : $($pdf | ConvertTo-Json -Depth 5)" }
+          # Elle tient encore après la fin de la commande qui l'a lancée.
+          Start-Sleep 20
+          if ((Invoke-RestMethod http://localhost:8000/api/health -TimeoutSec 3).app -ne 'cv-builder-pro') { throw "arrêtée toute seule" }
+
+          # Le clic sur « Arrêter CV Builder Pro ».
+          Start-Process -FilePath $stop
+          $down = $false
+          for ($i = 0; $i -lt 30 -and -not $down; $i++) {
+            try { Invoke-RestMethod http://localhost:8000/api/health -TimeoutSec 2 | Out-Null; Start-Sleep 1 } catch { $down = $true }
+          }
+          if (-not $down) { throw "toujours en marche après « Arrêter »" }
+
+      - name: Journal du serveur
+        if: failure()
+        run: wsl -d $env:DISTRO -u essai -- bash -c "cat ~/CV-builder-pro/local/serveur.log 2>/dev/null || true"

@@ -1,0 +1,85 @@
+\#{ Lettre de motivation, compilée par XeLaTeX. Générée par CV Builder : modifier
+     letter.json plutôt que ce fichier (sauf en mode manuel). }
+% Lettre de motivation générée par CV Builder à partir de letter.json et du CV.
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=2cm,bottom=2cm,left=2.3cm,right=2.3cm]{geometry}
+\usepackage{fontspec}
+\XeTeXgenerateactualtext=1
+\BLOCK{if english}
+\usepackage[english]{babel}
+\BLOCK{else}
+\usepackage[french]{babel}
+\BLOCK{endif}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\setmainfont{\VAR{font.prefix}}[
+  Path=\VAR{font.path},
+  Extension=.ttf,
+  UprightFont=*-Regular,
+  BoldFont=*-Bold,
+  ItalicFont=*-Italic,
+  BoldItalicFont=*-BoldItalic,
+  Numbers=Proportional,
+  Ligatures={TeX, CommonOff}]
+\definecolor{cvprimary}{HTML}{\VAR{primary}}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+% Un mot trop long pour la ligne l'étire un peu plutôt que de dépasser la marge.
+\setlength{\emergencystretch}{2em}
+% Interligne choisi selon la longueur : une lettre courte s'aère.
+\linespread{\VAR{layout.leading}}
+% Un écart entre deux blocs : un minimum, plus sa part (son poids) de la hauteur
+% libre de la page. Une lettre courte se répartit sur toute la page, une lettre
+% longue revient aux écarts minimaux.
+\newcommand{\ecart}[2]{\par\vspace{#1 plus #2fill}}
+
+\begin{document}
+\fontsize{\VAR{layout.size}}{\VAR{layout.baseline}}\selectfont
+
+% -------------------- EN-TÊTE (du CV) --------------------
+{\fontsize{19}{23}\selectfont\bfseries\color{cvprimary}\VAR{e(name)}}\par
+\vspace{3pt}
+{\small\raggedright \VAR{contacts}\par}
+\vspace{5pt}
+{\color{cvprimary}\rule{\linewidth}{0.5pt}}
+\ecart{16pt}{0.8}
+
+% -------------------- DESTINATAIRE, LIEU, DATE (alignés à droite) --------------------
+\BLOCK{if letter.recipient}
+{\raggedleft
+\BLOCK{for line in letter.recipient}
+\VAR{e(line)}\par
+\BLOCK{endfor}
+}
+\BLOCK{endif}
+\BLOCK{if letter.place_date}
+\BLOCK{if letter.recipient}
+\ecart{10pt}{0.25}
+\BLOCK{endif}
+{\raggedleft \VAR{e(letter.place_date)}\par}
+\BLOCK{endif}
+\ecart{20pt}{0.8}
+
+% -------------------- OBJET --------------------
+\BLOCK{if letter.subject}
+\textbf{\VAR{subject_label}~: \VAR{rich(letter.subject)}}
+\ecart{14pt}{0.5}
+\BLOCK{endif}
+
+% -------------------- CORPS --------------------
+\VAR{e(letter.salutation)}
+\BLOCK{for paragraph in letter.paragraphs}
+\ecart{8pt}{0.35}
+\VAR{rich(paragraph)}
+\BLOCK{endfor}
+\ecart{8pt}{0.35}
+\VAR{e(letter.closing)}
+\ecart{16pt}{0.5}
+{\raggedleft\textbf{\VAR{e(letter.signature or name)}}\par}
+% Le reste en bas, un peu plus large que les autres écarts.
+\vspace{0pt plus 1.6fill}
+
+\end{document}

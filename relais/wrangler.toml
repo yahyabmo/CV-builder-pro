@@ -1,0 +1,23 @@
+# Relais Gemini de CV Builder Pro, sur Cloudflare Workers. Mode d'emploi : README.md.
+name = "cvb-relais"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Les codes d'accès (hachés) et le décompte du mois. « npm run preparer » remplit l'id.
+[[kv_namespaces]]
+binding = "CODES"
+id = "b78a665367d64409829ae65480a13613"
+
+[vars]
+# Le seul modèle servi, quel que soit celui que demande l'appli : le moins cher.
+MODELE = "gemini-3.5-flash-lite"
+# Demandes par code et par jour (un CV ciblé en fait 3, une lettre 1).
+QUOTA_JOUR = "20"
+# Dépense maximale du mois, en dollars : au-delà, le relais refuse jusqu'au 1er.
+# 9 $ : un peu sous les 8,99 € de crédits mensuels de Google AI Pro (environ 10 $), pour
+# garder une marge (change, demandes en cours, décompte au mieux).
+BUDGET_MOIS = "9"
+# Prix de Gemini 3.5 Flash-Lite, en dollars par million de jetons (offre payante).
+PRIX_ENTREE = "0.30"
+PRIX_SORTIE = "2.50"
+FUSEAU = "Europe/Paris"

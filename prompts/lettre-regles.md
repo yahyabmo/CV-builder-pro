@@ -1,0 +1,8 @@
+- Claire : des phrases courtes, une idée par paragraphe ; une page, 250 à 350 mots, 3 ou 4 paragraphes.
+- Pas générique : aucune phrase qu'on pourrait recopier dans une autre lettre ; chaque paragraphe parle de cette offre, de cette équipe, de ce sujet.
+- Une motivation forte et sincère, appuyée sur un fait réel de mon parcours (un stage, un projet, un cours), jamais sur des adjectifs.
+- Montrer que l'offre a une âme : ce que l'équipe cherche à résoudre, pour qui, et pourquoi ça compte.
+- Écrire comme si je parlais au lecteur, à la première personne, honnêtement, sans flatterie ni superlatifs.
+- Ne rien inventer : seulement ce qui est dans mon CV, ma bibliothèque ou mes réponses.
+- Pas de formules toutes faites, pas de listes, pas de gras, pas de tiret cadratin.
+- Finir sur une proposition concrète (un échange, une démonstration), pas sur une formule creuse.

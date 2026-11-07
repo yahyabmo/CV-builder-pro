@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "language": "fr",
+  "header": {
+    "name": "CAMILLE LAURENT",
+    "headline": "Élève en école d'ingénieurs | Data Science & IA",
+    "summary": "En dernière année d'école d'ingénieurs, spécialité data science, à la recherche d'un stage de fin d'études en IA appliquée à partir de février 2027.",
+    "photo": "imgcv.jpg",
+    "contact_lines": [
+      [
+        {
+          "text": "Lyon, France",
+          "bold": true
+        },
+        {
+          "text": "06 00 00 00 00",
+          "label": "Téléphone",
+          "bold": false
+        },
+        {
+          "text": "camille.laurent@example.com",
+          "label": "Email",
+          "url": "mailto:camille.laurent@example.com",
+          "bold": false
+        },
+        {
+          "text": "Permis B",
+          "bold": true
+        }
+      ],
+      [
+        {
+          "text": "linkedin.com/in/camille-exemple",
+          "label": "LinkedIn",
+          "url": "https://www.linkedin.com/in/camille-exemple/",
+          "bold": false
+        },
+        {
+          "text": "github.com/camille-exemple",
+          "label": "GitHub",
+          "url": "https://github.com/camille-exemple",
+          "bold": false
+        },
+        {
+          "text": "toute la France",
+          "label": "Mobilité",
+          "bold": false
+        }
+      ]
+    ]
+  },
+  "sections": [
+    {
+      "id": "formation",
+      "title": "FORMATION",
+      "column": "left",
+      "visible": true,
+      "kind": "education",
+      "items": [
+        {
+          "title": "Diplôme d'ingénieur, Data Science",
+          "place": "École d'ingénieurs du Numérique, Lyon",
+          "dates": "2024 – 2027",
+          "description": "3e année, option **apprentissage automatique** et statistique."
+        },
+        {
+          "title": "Classes préparatoires (MPSI, MP)",
+          "place": "Lycée du Parc (exemple), Lyon",
+          "dates": "2022 – 2024",
+          "description": "Mathématiques (algèbre linéaire, probabilités), physique et informatique."
+        }
+      ]
+    },
+    {
+      "id": "competences",
+      "title": "COMPÉTENCES",
+      "column": "left",
+      "visible": true,
+      "kind": "skills",
+      "items": [
+        {
+          "label": "Programmation",
+          "text": "Python, C/C++, Java, TypeScript, SQL."
+        },
+        {
+          "label": "Data & IA",
+          "text": "Apprentissage automatique (scikit-learn, LightGBM), deep learning (PyTorch), vision par ordinateur, NLP, LLM, RAG, recherche sémantique."
+        },
+        {
+          "label": "Développement",
+          "text": "API REST (FastAPI), React, tests automatisés, architecture logicielle."
+        },
+        {
+          "label": "Outils",
+          "text": "Git, Docker, Linux, PostgreSQL, CI/CD, LaTeX."
+        }
+      ]
+    },
+    {
+      "id": "soft-skills",
+      "title": "SOFT SKILLS",
+      "column": "left",
+      "visible": true,
+      "kind": "grid",
+      "items": [
+        {
+          "text": "Autonomie",
+          "wide": false
+        },
+        {
+          "text": "Travail en équipe",
+          "wide": false
+        },
+        {
+          "text": "Communication",
+          "wide": false
+        },
+        {
+          "text": "Adaptabilité",
+          "wide": false
+        },
+        {
+          "text": "Gestion du temps et des priorités",
+          "wide": true
+        },
+        {
+          "text": "Esprit d'analyse et de synthèse",
+          "wide": true
+        }
+      ]
+    },
+    {
+      "id": "langues",
+      "title": "LANGUES",
+      "column": "left",
+      "visible": true,
+      "kind": "languages",
+      "items": [
+        {
+          "name": "Français",
+          "level": "langue maternelle"
+        },
+        {
+          "name": "Anglais",
+          "level": "courant (C1, TOEIC 945)"
+        },
+        {
+          "name": "Espagnol",
+          "level": "intermédiaire (B1)"
+        },
+        {
+          "name": "Italien",
+          "level": "notions"
+        }
+      ]
+    },
+    {
+      "id": "centres-interet",
+      "title": "CENTRES D'INTÉRÊT",
+      "column": "left",
+      "visible": true,
+      "kind": "bullets",
+      "items": [
+        "**Escalade** en club, deux séances par semaine",
+        "**Photographie** de rue et retouche",
+        "**Bénévolat** : soutien scolaire en mathématiques",
+        "**Course à pied** : semi-marathon de Lyon"
+      ]
+    },
+    {
+      "id": "experience",
+      "title": "EXPÉRIENCE PROFESSIONNELLE",
+      "column": "right",
+      "visible": true,
+      "kind": "experience",
+      "layout": "detailed",
+      "items": [
+        {
+          "title": "Stage Data Scientist",
+          "tag": "Équipe de trois stagiaires",
+          "place": "Logistica (exemple), Villeurbanne",
+          "dates": "Juin 2026 – Août 2026",
+          "bullets": [
+            "Prévision de la demande à 14 jours pour 1 200 références : modèles LightGBM sur l'historique des ventes, validation glissante dans le temps.",
+            "Pipeline de préparation des données en Python et SQL (PostgreSQL), relancé chaque nuit sous Docker.",
+            "API FastAPI qui sert les prévisions en production au logiciel de réapprovisionnement, avec tests automatisés.",
+            "Tableau de bord des écarts entre prévision et ventes, présenté chaque semaine à l'équipe achats."
+          ]
+        },
+        {
+          "title": "Conseil en librairie (job étudiant)",
+          "tag": "",
+          "place": "Librairie (exemple), Lyon",
+          "dates": "Septembre 2025 – Aujourd'hui",
+          "bullets": [
+            "Accueil et conseil des clients, commandes spéciales et suivi des livraisons.",
+            "Inventaire mensuel d'un rayon et propositions de réassort à partir des ventes."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "projets",
+      "title": "PROJETS",
+      "column": "right",
+      "visible": true,
+      "kind": "projects",
+      "items": [
+        {
+          "title": "TrafficLens – Comptage de véhicules",
+          "tag": "Projet d'école",
+          "date": "2026",
+          "description": "Détection et suivi de véhicules sur vidéo (YOLO, PyTorch), comptage par voie et par heure.",
+          "link": "https://github.com/camille-exemple/trafficlens"
+        },
+        {
+          "title": "Assistant de questions sur des documents",
+          "tag": "Projet personnel",
+          "date": "2026",
+          "description": "Recherche sémantique et réponses sourcées sur des PDF (embeddings, pgvector, FastAPI, React).",
+          "link": "https://github.com/camille-exemple/doc-assistant"
+        },
+        {
+          "title": "Planificateur de tournées",
+          "tag": "En binôme",
+          "date": "2025",
+          "description": "Optimisation de tournées de livraison (heuristiques, OR-Tools) et carte interactive (React).",
+          "link": "https://github.com/camille-exemple/tournees"
+        },
+        {
+          "title": "Simulation de fluides 2D",
+          "tag": "",
+          "date": "2024",
+          "description": "Différences finies en C++ et rendu temps réel avec OpenGL.",
+          "link": "https://github.com/camille-exemple/fluides"
+        }
+      ]
+    },
+    {
+      "id": "associatif",
+      "title": "TRAVAIL ASSOCIATIF",
+      "column": "right",
+      "visible": true,
+      "kind": "experience",
+      "layout": "compact",
+      "items": [
+        {
+          "title": "Trésorerie du bureau des sports",
+          "tag": "",
+          "place": "Association sportive de l'école",
+          "dates": "2024 – Aujourd'hui",
+          "bullets": [
+            "Budget annuel des activités sportives, suivi des dépenses et des subventions.",
+            "Organisation d'un tournoi inter-écoles de 200 participants."
+          ]
+        }
+      ]
+    }
+  ]
+}

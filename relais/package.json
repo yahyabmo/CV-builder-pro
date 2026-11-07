@@ -1,0 +1,15 @@
+{
+  "name": "cvb-relais",
+  "private": true,
+  "type": "module",
+  "description": "Relais Gemini de CV Builder Pro (Cloudflare Workers) : codes d'accès, quotas, plafond du mois.",
+  "scripts": {
+    "preparer": "node scripts/preparer.mjs",
+    "deployer": "wrangler deploy",
+    "code": "node scripts/codes.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  }
+}

@@ -1,0 +1,80 @@
+"""Application FastAPI de CV Builder (locale, un seul utilisateur).
+
+Avec ``make start`` (ou l'image Docker), ce serveur sert aussi l'interface déjà
+construite (``frontend/dist``) : tout tient sur une seule adresse. Avec
+``make dev``, l'interface tourne sur Vite et appelle ce serveur.
+"""
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.api import (
+    ai_settings,
+    assets,
+    ats,
+    cvs,
+    letters,
+    library,
+    project_ideas,
+    rules,
+    system,
+    target,
+    welcome,
+)
+from app.paths import WEB_DIR, ensure_base
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Au démarrage du serveur seulement : les tests n'écrivent jamais dans data/.
+    ensure_base()
+    yield
+
+
+app = FastAPI(title="CV Builder Pro", version="1.0.0", lifespan=lifespan)
+
+# En développement, l'interface tourne sur Vite (port 5173).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(cvs.router)
+app.include_router(assets.router)
+app.include_router(library.router)
+app.include_router(target.router)
+app.include_router(ai_settings.router)
+app.include_router(ats.router)
+app.include_router(rules.router)
+app.include_router(letters.router)
+app.include_router(welcome.router)
+app.include_router(project_ideas.router)
+app.include_router(system.router)
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    # « app » distingue CV Builder Pro des autres applis qui répondent aussi sur /api/health
+    # (le raccourci du bureau s'en sert pour savoir si c'est bien lui qui tourne).
+    return {"status": "ok", "app": "cv-builder-pro"}
+
+
+_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+
+
+@app.api_route("/api", methods=_METHODS, include_in_schema=False)
+@app.api_route("/api/{rest:path}", methods=_METHODS, include_in_schema=False)
+def unknown_api(rest: str = "") -> None:
+    """Une adresse /api inconnue : 404, jamais l'interface servie à la racine."""
+    raise HTTPException(404, f"Adresse inconnue : /api/{rest}")
+
+
+# L'interface construite, servie à la racine (après les routes /api).
+if (WEB_DIR / "index.html").exists():
+    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

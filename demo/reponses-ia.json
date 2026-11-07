@@ -1,0 +1,635 @@
+{
+  "_Ping": {
+    "ok": true,
+    "langue": "français"
+  },
+  "OfferAnalysis": {
+    "is_job_offer": true,
+    "job_title": "Stage Data Scientist IA générative",
+    "company": "Nordia",
+    "location": "Lyon",
+    "contract": "Stage",
+    "offer_language": "fr",
+    "required_languages": [
+      "anglais"
+    ],
+    "technologies": [
+      "Python",
+      "SQL",
+      "PyTorch",
+      "FastAPI",
+      "Docker",
+      "LangChain"
+    ],
+    "tools": [
+      "Docker"
+    ],
+    "methods": [
+      "évaluation de modèles"
+    ],
+    "skills": [
+      "RAG",
+      "recherche sémantique",
+      "embeddings",
+      "LLM"
+    ],
+    "soft_skills": [
+      "autonomie",
+      "esprit d'équipe"
+    ],
+    "keywords": [
+      {
+        "term": "RAG",
+        "importance": 3,
+        "category": "techno"
+      },
+      {
+        "term": "LLM",
+        "importance": 3,
+        "category": "techno"
+      },
+      {
+        "term": "Python",
+        "importance": 3,
+        "category": "techno"
+      },
+      {
+        "term": "recherche sémantique",
+        "importance": 2,
+        "category": "compétence"
+      },
+      {
+        "term": "embeddings",
+        "importance": 2,
+        "category": "techno"
+      },
+      {
+        "term": "FastAPI",
+        "importance": 2,
+        "category": "techno"
+      },
+      {
+        "term": "Docker",
+        "importance": 2,
+        "category": "outil"
+      },
+      {
+        "term": "SQL",
+        "importance": 2,
+        "category": "techno"
+      },
+      {
+        "term": "PyTorch",
+        "importance": 2,
+        "category": "techno"
+      },
+      {
+        "term": "LangChain",
+        "importance": 1,
+        "category": "outil"
+      },
+      {
+        "term": "évaluation de modèles",
+        "importance": 2,
+        "category": "méthode"
+      },
+      {
+        "term": "production",
+        "importance": 1,
+        "category": "domaine"
+      },
+      {
+        "term": "maintenance industrielle",
+        "importance": 1,
+        "category": "domaine"
+      },
+      {
+        "term": "autonomie",
+        "importance": 1,
+        "category": "soft skill"
+      },
+      {
+        "term": "esprit d'équipe",
+        "importance": 1,
+        "category": "soft skill"
+      },
+      {
+        "term": "anglais",
+        "importance": 1,
+        "category": "compétence"
+      }
+    ],
+    "summary": "Construire un assistant RAG qui répond aux techniciens à partir de la documentation interne, puis l'évaluer et le servir par une API.",
+    "short_name": "data scientist IA"
+  },
+  "TargetPlan": {
+    "headline": "Élève en école d'ingénieurs | IA générative & Data Science",
+    "summary": "En dernière année d'école d'ingénieurs, spécialité data science, à la recherche d'un stage de fin d'études en IA générative (RAG, LLM) à partir de février 2027.",
+    "skill_groups": [
+      {
+        "label": "IA générative & Data",
+        "items": [
+          {
+            "text": "LLM",
+            "source": "LLM"
+          },
+          {
+            "text": "RAG",
+            "source": "RAG"
+          },
+          {
+            "text": "recherche sémantique",
+            "source": "recherche sémantique"
+          },
+          {
+            "text": "embeddings",
+            "source": ""
+          },
+          {
+            "text": "PyTorch",
+            "source": "PyTorch"
+          },
+          {
+            "text": "évaluation de modèles",
+            "source": ""
+          }
+        ]
+      },
+      {
+        "label": "Programmation",
+        "items": [
+          {
+            "text": "Python",
+            "source": "Python"
+          },
+          {
+            "text": "SQL",
+            "source": "SQL"
+          },
+          {
+            "text": "C/C++",
+            "source": "C/C++"
+          },
+          {
+            "text": "Java",
+            "source": "Java"
+          },
+          {
+            "text": "TypeScript",
+            "source": "TypeScript"
+          }
+        ]
+      },
+      {
+        "label": "Développement & déploiement",
+        "items": [
+          {
+            "text": "FastAPI",
+            "source": "FastAPI"
+          },
+          {
+            "text": "Docker",
+            "source": "Docker"
+          },
+          {
+            "text": "LangChain",
+            "source": ""
+          },
+          {
+            "text": "tests automatisés",
+            "source": "tests automatisés"
+          }
+        ]
+      },
+      {
+        "label": "Outils",
+        "items": [
+          {
+            "text": "Git",
+            "source": "Git"
+          },
+          {
+            "text": "Linux",
+            "source": "Linux"
+          },
+          {
+            "text": "PostgreSQL",
+            "source": "PostgreSQL"
+          },
+          {
+            "text": "CI/CD",
+            "source": "CI/CD"
+          }
+        ]
+      }
+    ],
+    "missing": [
+      {
+        "term": "maintenance industrielle",
+        "note": "Aucune expérience du secteur ; le stage en logistique s'en approche par la donnée opérationnelle."
+      }
+    ],
+    "projects": [
+      {
+        "id": "cv-1",
+        "reason": "Recherche sémantique et réponses sourcées : le cœur de l'offre."
+      },
+      {
+        "id": "cv-0",
+        "reason": "Deep learning avec PyTorch."
+      },
+      {
+        "id": "cv-2",
+        "reason": "Interface web et données réelles."
+      },
+      {
+        "id": "cv-3",
+        "reason": "Rigueur numérique."
+      }
+    ]
+  },
+  "Rewrite": {
+    "experiences": [
+      {
+        "exp": "E1",
+        "bullets": [
+          {
+            "ref": "E1.1",
+            "text": "Prévision de la demande à 14 jours pour 1 200 références : modèles LightGBM, évaluation des modèles par validation glissante."
+          },
+          {
+            "ref": "E1.2",
+            "text": "Pipeline de données en Python et SQL (PostgreSQL), relancé chaque nuit sous Docker."
+          },
+          {
+            "ref": "E1.3",
+            "text": "API FastAPI qui sert les prévisions en production, avec tests automatisés."
+          },
+          {
+            "ref": "E1.4",
+            "text": "Résultats présentés chaque semaine à l'équipe métier (achats)."
+          }
+        ]
+      },
+      {
+        "exp": "E2",
+        "bullets": [
+          {
+            "ref": "E2.1",
+            "text": "Accueil et conseil des clients, commandes spéciales et suivi des livraisons."
+          },
+          {
+            "ref": "E2.2",
+            "text": "Inventaire mensuel d'un rayon et propositions de réassort à partir des ventes."
+          }
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "ref": "P1",
+        "text": "Assistant RAG sur des PDF : embeddings, recherche sémantique (pgvector), réponses sourcées par un LLM, API FastAPI."
+      },
+      {
+        "ref": "P2",
+        "text": "Détection et suivi de véhicules sur vidéo (YOLO, PyTorch), comptage par voie et par heure."
+      },
+      {
+        "ref": "P3",
+        "text": "Optimisation de tournées de livraison (heuristiques, OR-Tools) et carte interactive (React)."
+      },
+      {
+        "ref": "P4",
+        "text": "Différences finies en C++ et rendu temps réel avec OpenGL."
+      }
+    ]
+  },
+  "LetterDraft": {
+    "recipient": [
+      "Nordia",
+      "Équipe Data",
+      "Lyon"
+    ],
+    "subject": "Candidature au stage Data Scientist IA générative",
+    "salutation": "Madame, Monsieur,",
+    "paragraphs": [
+      "Un technicien de maintenance qui trouve en quelques secondes la bonne page de la documentation, c'est un problème concret, et c'est celui que votre équipe Data veut résoudre. Je vous propose de m'y consacrer pendant mon stage de fin d'études, à partir de février 2027, au sein de votre équipe à Lyon.",
+      "J'ai déjà construit, dans un projet personnel, un assistant qui répond à des questions sur des PDF : découpage des documents, embeddings, recherche avec pgvector et réponses qui citent leur source. Ce projet m'a appris qu'un assistant utile se juge d'abord sur ses erreurs. J'ai donc écrit une série de questions de contrôle et regardé, réponse par réponse, ce que le modèle inventait quand le bon passage manquait. L'évaluation m'a pris plus de temps que le modèle, et c'est elle qui a rendu l'outil fiable.",
+      "Cet été, chez Logistica, j'ai mis en production un modèle de prévision de la demande pour 1 200 références. J'ai écrit le pipeline de données en Python et SQL, servi les prévisions par une API FastAPI sous Docker, et présenté chaque semaine les écarts à l'équipe achats. Ce passage du notebook à un service que d'autres utilisent chaque jour est exactement ce que votre offre décrit, et c'est la partie du travail que je préfère.",
+      "Je serais heureux de vous montrer mon assistant de documents lors d'un échange, et de comprendre comment vous mesurez aujourd'hui la qualité des réponses données aux techniciens."
+    ],
+    "closing": "Je vous prie d'agréer, Madame, Monsieur, mes salutations distinguées."
+  },
+  "ImportedCV": {
+    "language": "fr",
+    "name": "CAMILLE LAURENT",
+    "headline": "Élève en école d'ingénieurs | Data Science & IA",
+    "summary": "En dernière année d'école d'ingénieurs, spécialité data science, à la recherche d'un stage de fin d'études en IA appliquée à partir de février 2027.",
+    "contacts": [
+      {
+        "text": "Lyon, France",
+        "label": "",
+        "url": ""
+      },
+      {
+        "text": "06 00 00 00 00",
+        "label": "Téléphone",
+        "url": ""
+      },
+      {
+        "text": "camille.laurent@example.com",
+        "label": "Email",
+        "url": "mailto:camille.laurent@example.com"
+      },
+      {
+        "text": "Permis B",
+        "label": "",
+        "url": ""
+      },
+      {
+        "text": "linkedin.com/in/camille-exemple",
+        "label": "LinkedIn",
+        "url": "https://www.linkedin.com/in/camille-exemple/"
+      },
+      {
+        "text": "github.com/camille-exemple",
+        "label": "GitHub",
+        "url": "https://github.com/camille-exemple"
+      },
+      {
+        "text": "toute la France",
+        "label": "Mobilité",
+        "url": ""
+      }
+    ],
+    "education": [
+      {
+        "title": "Diplôme d'ingénieur, Data Science",
+        "place": "École d'ingénieurs du Numérique, Lyon",
+        "dates": "2024 – 2027",
+        "description": "3e année, option **apprentissage automatique** et statistique."
+      },
+      {
+        "title": "Classes préparatoires (MPSI, MP)",
+        "place": "Lycée du Parc (exemple), Lyon",
+        "dates": "2022 – 2024",
+        "description": "Mathématiques (algèbre linéaire, probabilités), physique et informatique."
+      }
+    ],
+    "experience": [
+      {
+        "title": "Stage Data Scientist",
+        "tag": "Équipe de trois stagiaires",
+        "place": "Logistica (exemple), Villeurbanne",
+        "dates": "Juin 2026 – Août 2026",
+        "bullets": [
+          "Prévision de la demande à 14 jours pour 1 200 références : modèles LightGBM sur l'historique des ventes, validation glissante dans le temps.",
+          "Pipeline de préparation des données en Python et SQL (PostgreSQL), relancé chaque nuit sous Docker.",
+          "API FastAPI qui sert les prévisions en production au logiciel de réapprovisionnement, avec tests automatisés.",
+          "Tableau de bord des écarts entre prévision et ventes, présenté chaque semaine à l'équipe achats."
+        ]
+      },
+      {
+        "title": "Conseil en librairie (job étudiant)",
+        "tag": "",
+        "place": "Librairie (exemple), Lyon",
+        "dates": "Septembre 2025 – Aujourd'hui",
+        "bullets": [
+          "Accueil et conseil des clients, commandes spéciales et suivi des livraisons.",
+          "Inventaire mensuel d'un rayon et propositions de réassort à partir des ventes."
+        ]
+      }
+    ],
+    "associative": [
+      {
+        "title": "Trésorerie du bureau des sports",
+        "tag": "",
+        "place": "Association sportive de l'école",
+        "dates": "2024 – Aujourd'hui",
+        "bullets": [
+          "Budget annuel des activités sportives, suivi des dépenses et des subventions.",
+          "Organisation d'un tournoi inter-écoles de 200 participants."
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "title": "TrafficLens – Comptage de véhicules",
+        "tag": "Projet d'école",
+        "date": "2026",
+        "description": "Détection et suivi de véhicules sur vidéo (YOLO, PyTorch), comptage par voie et par heure.",
+        "link": "https://github.com/camille-exemple/trafficlens"
+      },
+      {
+        "title": "Assistant de questions sur des documents",
+        "tag": "Projet personnel",
+        "date": "2026",
+        "description": "Recherche sémantique et réponses sourcées sur des PDF (embeddings, pgvector, FastAPI, React).",
+        "link": "https://github.com/camille-exemple/doc-assistant"
+      },
+      {
+        "title": "Planificateur de tournées",
+        "tag": "En binôme",
+        "date": "2025",
+        "description": "Optimisation de tournées de livraison (heuristiques, OR-Tools) et carte interactive (React).",
+        "link": "https://github.com/camille-exemple/tournees"
+      },
+      {
+        "title": "Simulation de fluides 2D",
+        "tag": "",
+        "date": "2024",
+        "description": "Différences finies en C++ et rendu temps réel avec OpenGL.",
+        "link": "https://github.com/camille-exemple/fluides"
+      }
+    ],
+    "skills": [
+      {
+        "label": "Programmation",
+        "items": [
+          "Python",
+          "C/C++",
+          "Java",
+          "TypeScript",
+          "SQL"
+        ]
+      },
+      {
+        "label": "Data & IA",
+        "items": [
+          "Apprentissage automatique (scikit-learn",
+          "LightGBM)",
+          "deep learning (PyTorch)",
+          "vision par ordinateur",
+          "NLP",
+          "LLM",
+          "RAG",
+          "recherche sémantique"
+        ]
+      },
+      {
+        "label": "Développement",
+        "items": [
+          "API REST (FastAPI)",
+          "React",
+          "tests automatisés",
+          "architecture logicielle"
+        ]
+      },
+      {
+        "label": "Outils",
+        "items": [
+          "Git",
+          "Docker",
+          "Linux",
+          "PostgreSQL",
+          "CI/CD",
+          "LaTeX"
+        ]
+      }
+    ],
+    "soft_skills": [
+      "Autonomie",
+      "Travail en équipe",
+      "Communication",
+      "Adaptabilité",
+      "Gestion du temps et des priorités",
+      "Esprit d'analyse et de synthèse"
+    ],
+    "languages": [
+      {
+        "name": "Français",
+        "level": "langue maternelle"
+      },
+      {
+        "name": "Anglais",
+        "level": "courant (C1, TOEIC 945)"
+      },
+      {
+        "name": "Espagnol",
+        "level": "intermédiaire (B1)"
+      },
+      {
+        "name": "Italien",
+        "level": "notions"
+      }
+    ],
+    "interests": [
+      "**Escalade** en club, deux séances par semaine",
+      "**Photographie** de rue et retouche",
+      "**Bénévolat** : soutien scolaire en mathématiques",
+      "**Course à pied** : semi-marathon de Lyon"
+    ],
+    "unplaced": []
+  },
+  "ProjectIdeas": {
+    "ideas": [
+      {
+        "name": "Assistant de maintenance sur notices",
+        "effort": "3 à 4 jours",
+        "pitch": "Un assistant qui répond aux questions d'un technicien à partir de notices de pompes et de compresseurs publiques, avec la page de la notice en source. Un jeu de 50 questions mesure la justesse des réponses.",
+        "why": "c'est la mission du stage en petit : de la documentation technique, des réponses sourcées et une évaluation chiffrée.",
+        "keywords": [
+          "LangChain",
+          "évaluation de modèles",
+          "maintenance industrielle"
+        ],
+        "stack": [
+          "Python",
+          "LangChain",
+          "PostgreSQL",
+          "pgvector",
+          "FastAPI"
+        ],
+        "modules": [
+          "Collecte de notices techniques publiques en PDF, découpées en passages avec leur page.",
+          "Index de recherche sémantique dans PostgreSQL avec pgvector.",
+          "Chaîne LangChain : question, passages retrouvés, réponse qui cite la page.",
+          "Jeu d'évaluation : 50 questions, réponses attendues, score de justesse et des sources.",
+          "API FastAPI et petite page de démonstration."
+        ],
+        "data": "Des notices de pompes et de compresseurs publiées librement par leurs fabricants ; les questions de test sont écrites à la main.",
+        "steps": [
+          "Jour 1 : notices publiques, découpage en passages, index pgvector.",
+          "Jour 2 : chaîne LangChain question, passages, réponse avec la page en source.",
+          "Jour 3 : 50 questions de test, score de justesse et des sources.",
+          "Jour 4 : API FastAPI, README avec captures et chiffres."
+        ],
+        "cv_line": "Réponses sourcées sur des notices techniques (LangChain, pgvector, FastAPI), justesse mesurée sur 50 questions.",
+        "questions": [
+          "Comment as-tu découpé les notices, et pourquoi cette taille de passage ?",
+          "Comment mesures-tu qu'une réponse est juste, et que donne ton jeu de test ?",
+          "Que ferais-tu si l'assistant répondait sans source ?"
+        ]
+      },
+      {
+        "name": "Banc d'évaluation de RAG",
+        "effort": "2 à 3 jours",
+        "pitch": "Un outil qui compare plusieurs réglages d'un assistant documentaire (taille des passages, modèle d'embeddings, reclassement) sur un même jeu de questions, et en tire un rapport.",
+        "why": "l'offre insiste sur l'évaluation : tu montres que tu sais mesurer avant d'affirmer.",
+        "keywords": [
+          "évaluation de modèles",
+          "LangChain"
+        ],
+        "stack": [
+          "Python",
+          "LangChain",
+          "pandas",
+          "Plotly"
+        ],
+        "modules": [
+          "Jeu de questions et de réponses attendues sur un corpus public.",
+          "Trois réglages de recherche comparés sur les mêmes questions.",
+          "Métriques de justesse des sources et de fidélité des réponses.",
+          "Rapport HTML avec graphiques et conclusions."
+        ],
+        "data": "Une documentation technique publique et un jeu de questions écrit à la main.",
+        "steps": [
+          "Jour 1 : jeu de questions et réponses attendues.",
+          "Jour 2 : trois réglages, métriques de justesse et de fidélité.",
+          "Jour 3 : rapport HTML, conclusions dans le README."
+        ],
+        "cv_line": "Comparaison de trois réglages d'un assistant documentaire (LangChain, pandas) sur un jeu de questions, rapport chiffré.",
+        "questions": [
+          "Quel réglage a gagné, et de combien ?",
+          "Comment as-tu construit ton jeu de questions ?",
+          "Quelle métrique te paraît la plus fiable, et pourquoi ?"
+        ]
+      },
+      {
+        "name": "Journal d'interventions interrogeable",
+        "effort": "3 jours",
+        "pitch": "Des comptes rendus d'intervention générés, dont un modèle extrait l'équipement, la panne et l'action, rangés en base et interrogeables en langage naturel.",
+        "why": "il touche la maintenance industrielle, le métier des techniciens que l'assistant servira.",
+        "keywords": [
+          "maintenance industrielle",
+          "évaluation de modèles"
+        ],
+        "stack": [
+          "Python",
+          "SQL",
+          "Docker",
+          "FastAPI"
+        ],
+        "modules": [
+          "Générateur de comptes rendus d'intervention réalistes.",
+          "Extraction de l'équipement, de la panne et de l'action par un modèle de langage.",
+          "Contrôle de l'extraction sur 30 exemples annotés à la main.",
+          "Base SQL et questions en langage naturel.",
+          "Lancement en une commande avec Docker."
+        ],
+        "data": "Des comptes rendus générés par le projet lui-même : aucune donnée privée.",
+        "steps": [
+          "Jour 1 : générateur de comptes rendus, schéma SQL.",
+          "Jour 2 : extraction et contrôle sur 30 exemples annotés.",
+          "Jour 3 : questions en langage naturel, Docker, README."
+        ],
+        "cv_line": "Extraction structurée de comptes rendus d'intervention (Python, SQL, FastAPI), contrôlée sur 30 exemples annotés.",
+        "questions": [
+          "Comment as-tu vérifié que l'extraction était juste ?",
+          "Pourquoi une base SQL plutôt qu'une recherche sémantique ?",
+          "Comment l'adapterais-tu à de vrais comptes rendus ?"
+        ]
+      }
+    ]
+  }
+}

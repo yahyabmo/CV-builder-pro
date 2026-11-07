@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "fonts": {
+    "main": "Lato",
+    "ligatures": false,
+    "figures": "proportional"
+  },
+  "palette": {
+    "primary": "001F82",
+    "secondary": "4F6B8A",
+    "text": "000000",
+    "accent": "2E7D32",
+    "band": "ECF3FB"
+  },
+  "page": {
+    "margin_cm": 1.0,
+    "base_size": 10,
+    "parskip_pt": 3.0,
+    "line_spread": 1.0
+  },
+  "blocks": {
+    "name": {
+      "size": 24.88,
+      "leading": 30.0,
+      "bold": true,
+      "italic": false,
+      "color": "primary",
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "headline": {
+      "size": 12.0,
+      "leading": 14.0,
+      "bold": true,
+      "italic": false,
+      "color": "primary",
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "summary": {
+      "size": null,
+      "leading": null,
+      "bold": false,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "contact_label": {
+      "size": null,
+      "leading": null,
+      "bold": true,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "contact_strong": {
+      "size": null,
+      "leading": null,
+      "bold": true,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "contact_value": {
+      "size": null,
+      "leading": null,
+      "bold": false,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "section_title": {
+      "size": 13.0,
+      "leading": 15.5,
+      "bold": true,
+      "italic": false,
+      "color": "primary",
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "entry_title": {
+      "size": null,
+      "leading": null,
+      "bold": true,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "skill_label": {
+      "size": null,
+      "leading": null,
+      "bold": true,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "language_name": {
+      "size": null,
+      "leading": null,
+      "bold": true,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "experience_title": {
+      "size": 11.0,
+      "leading": 13.5,
+      "bold": true,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "experience_tag": {
+      "size": 10.0,
+      "leading": 12.0,
+      "bold": false,
+      "italic": true,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "experience_place": {
+      "size": 11.0,
+      "leading": 13.5,
+      "bold": false,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "project_title": {
+      "size": null,
+      "leading": null,
+      "bold": true,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "project_tag": {
+      "size": 9.0,
+      "leading": 11.0,
+      "bold": false,
+      "italic": true,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "date": {
+      "size": null,
+      "leading": null,
+      "bold": true,
+      "italic": true,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "date_in_place": {
+      "size": 10.0,
+      "leading": 12.0,
+      "bold": true,
+      "italic": true,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    },
+    "body": {
+      "size": null,
+      "leading": null,
+      "bold": false,
+      "italic": false,
+      "color": null,
+      "uppercase": false,
+      "letter_spacing": 0.0,
+      "font": null
+    }
+  },
+  "photo": {
+    "visible": true,
+    "shape": "square",
+    "position": "right",
+    "size_mode": "match_text",
+    "size_cm": 3.0,
+    "offset_x_pt": 0.0,
+    "offset_y_pt": 0.0,
+    "border_pt": 0.0,
+    "border_color": "primary",
+    "corner_radius_pt": 6.0
+  },
+  "header": {
+    "text_width": 0.78,
+    "name_gap_pt": 12.0,
+    "headline_gap_pt": 7.0,
+    "rule_visible": true,
+    "rule_before_pt": 6.0,
+    "rule_after_pt": 2.0,
+    "rule_thickness_pt": 0.4,
+    "rule_color": "primary",
+    "contact_separator": "|",
+    "after_contact_pt": 10.0
+  },
+  "columns": {
+    "left_width": 0.41,
+    "right_width": 0.55,
+    "fill_page": true,
+    "bottom_safety_pt": 4.0
+  },
+  "band": {
+    "visible": true,
+    "color": "band",
+    "column": "left",
+    "top_offset_pt": 14.0
+  },
+  "section_titles": {
+    "variant": "rule",
+    "band_color": "primary",
+    "band_text_color": "FFFFFF",
+    "band_radius_pt": 3.0,
+    "band_padding_pt": 3.0
+  },
+  "summary_frame": {
+    "visible": false,
+    "border_pt": 0.6,
+    "border_color": "primary",
+    "background_color": null,
+    "radius_pt": 4.0,
+    "padding_pt": 6.0
+  },
+  "spacing": {
+    "section_gap_pt": 12.0,
+    "section_stretch": 2.0,
+    "entry_gap_pt": 7.0,
+    "entry_stretch": 1.0,
+    "skill_gap_pt": 5.0,
+    "skill_stretch": 0.5,
+    "title_rule_gap_pt": 2.0,
+    "title_rule_visible": true,
+    "title_rule_thickness_pt": 0.4,
+    "title_rule_color": "primary",
+    "after_title_pt": 7.0,
+    "place_gap_pt": 3.0
+  },
+  "lists": {
+    "leftmargin_pt": 12.0,
+    "labelsep_pt": 5.0,
+    "bullet": "bullet",
+    "bullet_color": null,
+    "left": {
+      "itemsep_pt": 1.5,
+      "itemsep_stretch_pt": 0.0,
+      "topsep_pt": 2.0,
+      "topsep_stretch_pt": 0.0
+    },
+    "right": {
+      "itemsep_pt": 4.0,
+      "itemsep_stretch_pt": 1.0,
+      "topsep_pt": 4.0,
+      "topsep_stretch_pt": 1.0
+    }
+  },
+  "grid": {
+    "arraystretch": 1.15,
+    "first_col": 0.46,
+    "gap": 0.04,
+    "second_col": 0.5
+  },
+  "links": {
+    "hide_boxes": false
+  }
+}

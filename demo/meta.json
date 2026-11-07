@@ -1,0 +1,14 @@
+{
+  "name": "Version classique",
+  "kind": "base",
+  "mode": "visual",
+  "source": null,
+  "company": null,
+  "position": null,
+  "offer_url": null,
+  "score": null,
+  "created_at": "2026-11-03T12:00:00Z",
+  "updated_at": "2026-11-03T12:00:00Z",
+  "pages": 1,
+  "welcome": true
+}

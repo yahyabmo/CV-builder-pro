@@ -1,0 +1,325 @@
+\#{ CV en deux colonnes, compilé par XeLaTeX. Généré par CV Builder : modifier
+     content.json et style.json plutôt que ce fichier (sauf en mode manuel). }
+% Généré par CV Builder à partir de content.json et style.json.
+\documentclass[\VAR{s.page.base_size}pt,a4paper]{article}
+
+% -------------------- PACKAGES --------------------
+\usepackage[margin=\VAR{pt(s.page.margin_cm)}cm]{geometry}
+\usepackage{fontspec}
+% Le texte extrait du PDF reprend exactement les caractères tapés (« - »,
+% « · »…) : indispensable pour les ATS.
+\XeTeXgenerateactualtext=1
+\BLOCK{if c.language == "en"}
+\usepackage[english]{babel}
+\BLOCK{else}
+\usepackage[french]{babel}
+\frenchsetup{StandardLists=true}
+\BLOCK{endif}
+\usepackage{enumitem}
+\BLOCK{if s.links.hide_boxes}
+\usepackage[hidelinks]{hyperref}
+\BLOCK{else}
+\usepackage{hyperref}
+\BLOCK{endif}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+
+% -------------------- POLICE --------------------
+% Ligatures « fi », « fl » coupées : un ATS lit alors des lettres normales.
+\BLOCK{macro fontoptions(f)}
+  Path=\VAR{f.path},
+  Extension=.ttf,
+  UprightFont=*-Regular,
+  BoldFont=*-Bold,
+  ItalicFont=*-Italic,
+  BoldItalicFont=*-BoldItalic,
+  Numbers=\BLOCK{if s.fonts.figures == "tabular"}Monospaced\BLOCK{else}Proportional\BLOCK{endif},
+  Ligatures={TeX\BLOCK{if not s.fonts.ligatures}, CommonOff\BLOCK{endif}}]\BLOCK{endmacro}
+\setmainfont{\VAR{font.prefix}}[
+\VAR{fontoptions(font)}
+\BLOCK{for f in extra_fonts}
+\newfontfamily\VAR{f.command}{\VAR{f.prefix}}[
+\VAR{fontoptions(f)}
+\BLOCK{endfor}
+
+% -------------------- COLORS --------------------
+\BLOCK{for name, hex in palette}
+\definecolor{\VAR{name}}{HTML}{\VAR{hex}}
+\BLOCK{endfor}
+\BLOCK{for hex in extra_colors}
+\definecolor{cvhex\VAR{hex}}{HTML}{\VAR{hex}}
+\BLOCK{endfor}
+\BLOCK{if s.links.color}
+% Les liens dans leur couleur, sans cadre.
+\hypersetup{colorlinks=true, urlcolor=\VAR{h.color(s.links.color)}, linkcolor=\VAR{h.color(s.links.color)}}
+\BLOCK{endif}
+
+% -------------------- STYLE --------------------
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{\VAR{pt(s.page.parskip_pt)}pt}
+\BLOCK{if s.page.line_spread != 1}
+\linespread{\VAR{pt(s.page.line_spread)}}
+\BLOCK{endif}
+
+% Titre de rubrique avec son filet. L'espace avant est explicite : dans une
+% minipage, \section le perd.
+\BLOCK{set titles = s.section_titles}
+\newcommand{\rubrique}[2][\VAR{h.glue(sp.section_gap_pt, sp.section_stretch)}]{%
+  \par\vspace{#1}%
+\BLOCK{if titles.variant == "band"}
+  \noindent\begin{tikzpicture}\node[fill=\VAR{h.color(titles.band_color)}, rounded corners=\VAR{pt(titles.band_radius_pt)}pt, inner sep=\VAR{pt(titles.band_padding_pt)}pt, text width={\linewidth-\VAR{pt(2 * titles.band_padding_pt)}pt}, align=left]{\VAR{h.size(b.section_title)}\VAR{h.fmt_in(b.section_title, "#2", titles.band_text_color)}};\end{tikzpicture}\par
+  \vspace{\VAR{pt(sp.after_title_pt)}pt}}
+\BLOCK{else}
+  {\VAR{h.size(b.section_title)}\VAR{h.fmt(b.section_title, "#2")}\par}%
+\BLOCK{if titles.variant == "rule" and sp.title_rule_visible}
+  \vspace{\VAR{pt(sp.title_rule_gap_pt)}pt}{\color{\VAR{h.color(sp.title_rule_color)}}\hrule height \VAR{pt(sp.title_rule_thickness_pt)}pt}\vspace{\VAR{pt(sp.after_title_pt)}pt}}
+\BLOCK{else}
+  \vspace{\VAR{pt(sp.after_title_pt)}pt}}
+\BLOCK{endif}
+\BLOCK{endif}
+
+\setlist[itemize]{label=\VAR{h.bullet()}, leftmargin=\VAR{pt(s.lists.leftmargin_pt)}pt, labelsep=\VAR{pt(s.lists.labelsep_pt)}pt, itemsep=\VAR{h.stretch(s.lists.left.itemsep_pt, s.lists.left.itemsep_stretch_pt)}, parsep=0pt, topsep=\VAR{h.stretch(s.lists.left.topsep_pt, s.lists.left.topsep_stretch_pt)}}
+\pagestyle{empty}
+
+% Espace entre deux entrées d'une rubrique, et entre deux blocs de compétences.
+\newcommand{\entre}{\par\vspace{\VAR{h.glue(sp.entry_gap_pt, sp.entry_stretch)}}}
+\newcommand{\petitentre}{\par\vspace{\VAR{h.glue(sp.skill_gap_pt, sp.skill_stretch)}}}
+% Hauteur laissée aux deux colonnes : tout le reste de la page.
+\newlength{\hauteurcol}
+
+\BLOCK{macro section(sec, first)}
+\VAR{mark("section", sec.id)}
+\BLOCK{if first}
+\rubrique[0pt]{\VAR{e(sec.title)}}
+\BLOCK{else}
+\rubrique{\VAR{e(sec.title)}}
+\BLOCK{endif}
+
+\BLOCK{if sec.kind == "education"}
+\BLOCK{for it in sec.items}
+\BLOCK{if not loop.first}
+\entre
+\BLOCK{endif}
+\VAR{mark("item", sec.id, loop.index0)}
+\VAR{h.fmt(b.entry_title, e(it.title))}\\
+\VAR{e(it.place)}\\
+\BLOCK{if it.description}
+\VAR{h.fmt(b.date, e(it.dates))}\\
+\VAR{rich(it.description)}
+\BLOCK{else}
+\VAR{h.fmt(b.date, e(it.dates))}
+\BLOCK{endif}
+
+\BLOCK{endfor}
+\BLOCK{elif sec.kind == "skills"}
+\BLOCK{for it in sec.items}
+\BLOCK{if not loop.first}
+\petitentre
+\BLOCK{endif}
+\VAR{mark("item", sec.id, loop.index0)}
+\VAR{h.fmt(b.skill_label, e(it.label))}\\
+\VAR{rich(it.text)}
+
+\BLOCK{endfor}
+\BLOCK{elif sec.kind == "grid"}
+{\renewcommand{\arraystretch}{\VAR{pt(s.grid.arraystretch)}}%
+\begin{tabular}{@{}p{\VAR{pt(s.grid.first_col)}\linewidth}@{\hspace{\VAR{pt(s.grid.gap)}\linewidth}}p{\VAR{pt(s.grid.second_col)}\linewidth}@{}}
+\BLOCK{set cell = namespace(i=0)}
+\BLOCK{for row in grid_rows(sec.items)}
+\VAR{mark("item", sec.id, cell.i)}
+\BLOCK{if row[0] == "pair"}
+\VAR{h.bullet()}\ \VAR{rich(row[1])} & \VAR{h.bullet()}\ \VAR{rich(row[2])} \\
+\BLOCK{elif row[0] == "single"}
+\VAR{h.bullet()}\ \VAR{rich(row[1])} & \\
+\BLOCK{else}
+\multicolumn{2}{@{}l@{}}{\VAR{h.bullet()}\ \VAR{rich(row[1])}} \\
+\BLOCK{endif}
+\BLOCK{set cell.i = cell.i + (2 if row[0] == "pair" else 1)}
+\BLOCK{endfor}
+\end{tabular}\par}
+
+\BLOCK{elif sec.kind == "languages"}
+\BLOCK{for it in sec.items}
+\VAR{mark("item", sec.id, loop.index0)}
+\VAR{h.fmt(b.language_name, e(it.name) ~ " :")} \VAR{e(it.level)}\BLOCK{if not loop.last}\\\BLOCK{endif}
+
+\BLOCK{endfor}
+
+\BLOCK{elif sec.kind == "bullets"}
+\begin{itemize}[leftmargin=*]
+\BLOCK{for it in sec.items}
+\VAR{mark("item", sec.id, loop.index0)}
+    \item \VAR{rich(it)}
+\BLOCK{endfor}
+\end{itemize}
+
+\BLOCK{elif sec.kind == "experience"}
+\BLOCK{for it in sec.items}
+\BLOCK{if not loop.first}
+\entre
+\BLOCK{endif}
+\BLOCK{set n = loop.index0}
+\VAR{mark("item", sec.id, n)}
+\BLOCK{if sec.layout == "detailed"}
+{\VAR{h.size(b.experience_title)}\VAR{h.fmt(b.experience_title, e(it.title))}\enspace{\VAR{h.size(b.experience_tag)}\VAR{h.fmt(b.experience_tag, ("· " ~ e(it.tag)) if it.tag else "")}}\par}
+{\VAR{h.size(b.experience_place)}\VAR{h.fmt(b.experience_place, e(it.place))}\hfill{\VAR{h.size(b.date_in_place)}\VAR{h.fmt(b.date_in_place, e(it.dates))}}\par}\vspace{\VAR{pt(sp.place_gap_pt)}pt}
+\BLOCK{else}
+\VAR{h.fmt(b.entry_title, e(it.title))}\\
+\VAR{e(it.place)} \hfill \VAR{h.fmt(b.date, e(it.dates))}\par\vspace{\VAR{pt(sp.place_gap_pt)}pt}
+\BLOCK{endif}
+\BLOCK{if it.bullets}
+\begin{itemize}
+\BLOCK{for bullet in it.bullets}
+\VAR{mark("bullet", sec.id, n, loop.index0)}
+    \item \VAR{rich(bullet)}
+\BLOCK{endfor}
+\end{itemize}
+\BLOCK{endif}
+
+\BLOCK{endfor}
+\BLOCK{elif sec.kind == "projects"}
+\BLOCK{for it in sec.items}
+\BLOCK{if not loop.first}
+\entre
+\BLOCK{endif}
+\VAR{mark("item", sec.id, loop.index0)}
+\par\VAR{h.fmt(b.project_title, e(it.title))}\BLOCK{if it.tag}\enspace{\VAR{h.size(b.project_tag)}\VAR{h.fmt(b.project_tag, "· " ~ e(it.tag))}}\BLOCK{endif}\hfill\VAR{h.fmt(b.date, e(it.date))}\par
+\VAR{rich(it.description)}
+\BLOCK{endfor}
+
+\BLOCK{endif}
+\BLOCK{endmacro}
+
+% -------------------- DOCUMENT --------------------
+\begin{document}
+\BLOCK{if s.palette.text != "000000"}
+\color{cvtext}
+\BLOCK{endif}
+
+% -------------------- HEADER --------------------
+% La photo, carrée, a exactement la hauteur du bloc de texte à côté.
+\VAR{mark("header")}
+\BLOCK{set photo_on = s.photo.visible and c.header.photo}
+\BLOCK{set centered = s.header.align == "center"}
+\newsavebox{\blocentete}
+\sbox{\blocentete}{\begin{minipage}[t]{\VAR{"1" if centered and not photo_on else pt(s.header.text_width)}\textwidth}
+    \vspace{0pt}\BLOCK{if centered}\centering\BLOCK{else}\raggedright\BLOCK{endif}
+
+    {\VAR{h.size(b.name)}\VAR{h.fmt(b.name, e(c.header.name))}}\par
+    \vspace{\VAR{pt(s.header.name_gap_pt)}pt}
+    {\VAR{h.size(b.headline)}\VAR{h.fmt(b.headline, e(c.header.headline))}}\par
+    \vspace{\VAR{pt(s.header.headline_gap_pt)}pt}
+\BLOCK{set frame = s.summary_frame}
+\BLOCK{if frame.visible}
+    \begin{tikzpicture}\node[\BLOCK{if frame.border_pt}draw=\VAR{h.color(frame.border_color)}, line width=\VAR{pt(frame.border_pt)}pt, \BLOCK{endif}\BLOCK{if frame.background_color}fill=\VAR{h.color(frame.background_color)}, \BLOCK{endif}rounded corners=\VAR{pt(frame.radius_pt)}pt, inner sep=\VAR{pt(frame.padding_pt)}pt, text width={\linewidth-\VAR{pt(2 * frame.padding_pt + 2 * frame.border_pt)}pt}, align=left]{\VAR{h.size(b.summary)}\VAR{h.fmt(b.summary, rich(c.header.summary))}};\end{tikzpicture}\par
+\BLOCK{elif b.summary.size is none}
+    \VAR{h.fmt(b.summary, rich(c.header.summary))}\par
+\BLOCK{else}
+    {\VAR{h.size(b.summary)}\VAR{h.fmt(b.summary, rich(c.header.summary))}\par}
+\BLOCK{endif}
+\end{minipage}}
+\BLOCK{set photo_width = "\\dimexpr\\ht\\blocentete+\\dp\\blocentete\\relax" if s.photo.size_mode == "match_text" else pt(s.photo.size_cm) ~ "cm"}
+\BLOCK{if photo_on and s.photo.position == "left"}
+\noindent\begin{minipage}[t]{\VAR{photo_width}}
+    \vspace{0pt}
+    \VAR{h.photo(c.header.photo)}
+\end{minipage}\hfill
+\usebox{\blocentete}
+\BLOCK{elif photo_on}
+\noindent\usebox{\blocentete}\hfill
+\begin{minipage}[t]{\VAR{photo_width}}
+    \vspace{0pt}
+    \VAR{h.photo(c.header.photo)}
+\end{minipage}
+\BLOCK{else}
+\noindent\usebox{\blocentete}
+\BLOCK{endif}
+
+\BLOCK{if s.header.rule_visible}
+\vspace{\VAR{pt(s.header.rule_before_pt)}pt}
+{\color{\VAR{h.color(s.header.rule_color)}}\rule{\textwidth}{\VAR{pt(s.header.rule_thickness_pt)}pt}}
+\vspace{\VAR{pt(s.header.rule_after_pt)}pt}
+\BLOCK{else}
+\vspace{\VAR{pt(s.header.rule_before_pt + s.header.rule_after_pt)}pt}
+\BLOCK{endif}
+
+\BLOCK{if centered}
+{\centering
+\BLOCK{endif}
+\BLOCK{for line in c.header.contact_lines}
+\VAR{mark("contact", loop.index0)}
+\BLOCK{for item in line}
+\BLOCK{if not loop.first} \quad \VAR{e(s.header.contact_separator)} \quad \BLOCK{endif}
+\BLOCK{if item.label}
+\VAR{h.fmt(b.contact_label, e(item.label) ~ " :")} \BLOCK{endif}
+\BLOCK{set value = ("\\href{" ~ url(item.url) ~ "}{" ~ e(item.text) ~ "}") if item.url else e(item.text)}
+\BLOCK{if item.bold}
+\VAR{h.fmt(b.contact_strong, value)}\BLOCK{else}
+\VAR{h.fmt(b.contact_value, value)}\BLOCK{endif}
+\BLOCK{endfor}
+
+
+\BLOCK{endfor}
+\BLOCK{if centered}
+\par}
+\BLOCK{endif}
+\vspace{\VAR{pt(s.header.after_contact_pt)}pt}
+
+% -------------------- DEUX COLONNES --------------------
+% Les deux colonnes prennent toute la hauteur restante ; l'espace libre se
+% répartit entre les rubriques et les entrées.
+\VAR{mark("none")}
+\BLOCK{if s.columns.layout == "one"}
+% -------------------- UNE COLONNE --------------------
+% Les rubriques l'une sous l'autre, dans l'ordre du contenu.
+\par
+\setlist*[itemize]{itemsep=\VAR{h.stretch(s.lists.right.itemsep_pt, s.lists.right.itemsep_stretch_pt)}, topsep=\VAR{h.stretch(s.lists.right.topsep_pt, s.lists.right.topsep_stretch_pt)}}
+\BLOCK{for sec in single}
+\VAR{section(sec, loop.first)}
+\BLOCK{endfor}
+\VAR{mark("none")}
+\BLOCK{else}
+\BLOCK{if s.columns.fill_page}
+\par\setlength{\hauteurcol}{\dimexpr\pagegoal-\pagetotal-\baselineskip-\VAR{pt(s.columns.bottom_safety_pt)}pt\relax}
+\BLOCK{set colopt = "[t][\\hauteurcol][s]"}
+\BLOCK{else}
+\par
+\BLOCK{set colopt = "[t]"}
+\BLOCK{endif}
+\noindent
+\begin{minipage}\VAR{colopt}{\VAR{pt(s.columns.left_width)}\textwidth}
+\raggedright
+\VAR{mark("none")}
+\BLOCK{if s.band.visible and s.band.column == "left"}
+% Fond de la colonne : du haut de la colonne au bas de la page, depuis le bord
+% gauche de la page jusqu'au bout des filets. (Deux compilations.)
+\begin{tikzpicture}[remember picture, overlay]
+  \fill[\VAR{h.color(s.band.color)}] ([yshift=\VAR{pt(s.band.top_offset_pt)}pt]current page.west |- 0,0) rectangle (\linewidth, 0 |- current page.south);
+\end{tikzpicture}%
+\BLOCK{endif}
+
+\BLOCK{for sec in left}
+\VAR{section(sec, loop.first)}
+\BLOCK{endfor}
+\VAR{mark("none")}
+\end{minipage}%
+\hfill
+\begin{minipage}\VAR{colopt}{\VAR{pt(s.columns.right_width)}\textwidth}
+\raggedright
+\VAR{mark("none")}
+\BLOCK{if s.band.visible and s.band.column == "right"}
+\begin{tikzpicture}[remember picture, overlay]
+  \fill[\VAR{h.color(s.band.color)}] ([yshift=\VAR{pt(s.band.top_offset_pt)}pt]0,0) rectangle (current page.east |- current page.south);
+\end{tikzpicture}%
+\BLOCK{endif}
+\setlist*[itemize]{itemsep=\VAR{h.stretch(s.lists.right.itemsep_pt, s.lists.right.itemsep_stretch_pt)}, topsep=\VAR{h.stretch(s.lists.right.topsep_pt, s.lists.right.topsep_stretch_pt)}}
+
+\BLOCK{for sec in right}
+\VAR{section(sec, loop.first)}
+\BLOCK{endfor}
+\VAR{mark("none")}
+\end{minipage}
+\BLOCK{endif}
+
+\end{document}

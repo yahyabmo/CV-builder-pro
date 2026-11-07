@@ -1,0 +1,19 @@
+Stage de fin d'études – Data Scientist IA générative (6 mois, à partir de février 2027)
+Nordia (entreprise fictive) – Lyon
+
+Nordia conçoit des équipements industriels connectés. Au sein de l'équipe Data, tu
+construis un assistant qui répond aux questions des techniciens de maintenance à
+partir de la documentation interne.
+
+Missions :
+- construire une chaîne RAG en Python : découpage des documents, embeddings, recherche
+  sémantique, génération par un LLM ;
+- évaluer la qualité des réponses et suivre le modèle en production ;
+- exposer l'assistant par une API FastAPI, déployée avec Docker ;
+- présenter les résultats aux équipes métier.
+
+Profil :
+- école d'ingénieurs, spécialité data ou IA ;
+- Python, SQL, PyTorch ou équivalent ;
+- une première expérience des LLM ; LangChain apprécié ;
+- autonomie, esprit d'équipe, anglais professionnel.

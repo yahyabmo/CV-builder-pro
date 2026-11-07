@@ -1,0 +1,78 @@
+name: Docker
+
+# À chaque push : l'image est construite et essayée (santé, interface, compilation
+# du CV fictif, machine). Sur une étiquette v* : publiée sur ghcr.io pour amd64 et arm64.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Construire l'image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: cv-builder-pro:essai
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Essayer l'image
+        run: |
+          docker run -d --name essai -p 127.0.0.1:8000:8000 cv-builder-pro:essai
+          curl -sf -o /dev/null --retry 60 --retry-all-errors --retry-delay 1 http://127.0.0.1:8000/api/health
+          curl -sf http://127.0.0.1:8000/ | grep -q 'id="root"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/nexiste-pas)" = 404
+          curl -sf http://127.0.0.1:8000/api/system/check \
+            | python3 -c "import json, sys; r = json.load(sys.stdin); assert r['ok'], r"
+          curl -sf -X POST http://127.0.0.1:8000/api/cvs/base/compile \
+            | python3 -c "import json, sys; r = json.load(sys.stdin); assert r['ok'] and r['pages'] == 1, r"
+          curl -sf -X POST http://127.0.0.1:8000/api/welcome/setup
+          docker exec essai ls /data/data/base/cv.pdf /data/local/setup.json
+
+      - name: Journal du conteneur
+        if: failure()
+        run: docker logs essai
+
+      - name: Étiquettes de l'image
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/cv-builder-pro
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/setup-qemu-action@v3
+
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publier (amd64 et arm64)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha

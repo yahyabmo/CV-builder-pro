@@ -1,0 +1,31 @@
+# Secrets
+.env
+
+# Fichiers générés
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+node_modules/
+frontend/dist/
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.xdv
+*.synctex.gz
+
+# Dossiers de compilation
+build/
+
+# Tes données : version classique, CV ciblés, bibliothèque, thèmes, corbeille, règles
+data/
+# Miniatures des PDF, refaites à la demande
+miniature.png
+# Réglages de cette machine et journal des appels à l'IA
+local/
+
+# Relais : fichiers de travail de wrangler
+.wrangler/

@@ -1,0 +1,17 @@
+# Rien de personnel ni de généré n'entre dans l'image.
+.env
+.env.*
+data/
+local/
+build/
+.venv/
+.git/
+.github/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+frontend/node_modules/
+frontend/dist/
+docs/
+backend/tests/
+relais/

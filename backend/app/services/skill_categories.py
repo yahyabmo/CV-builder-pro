@@ -1,0 +1,322 @@
+"""La catégorie d'une compétence, devinée sans IA.
+
+Un dictionnaire des technos courantes donne une catégorie type ; si la
+bibliothèque a déjà une catégorie équivalente (« Programmation » pour
+« Langages »), c'est la sienne qui est reprise, pour ne pas multiplier les
+groupes. Sinon « Autres ». On le corrige d'un clic.
+"""
+
+import re
+
+from app.services.library_import import normalize
+
+# Catégorie type → (mots qui la reconnaissent dans un nom de catégorie, compétences).
+_CATEGORIES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "Langages": (
+        ("langage", "programmation"),
+        (
+            "Python",
+            "Java",
+            "C",
+            "C++",
+            "C#",
+            "JavaScript",
+            "TypeScript",
+            "Go",
+            "Golang",
+            "Rust",
+            "Kotlin",
+            "Swift",
+            "PHP",
+            "Ruby",
+            "R",
+            "Scala",
+            "SQL",
+            "Bash",
+            "Shell",
+            "MATLAB",
+            "HTML",
+            "CSS",
+            "HTML/CSS",
+            "OCaml",
+            "Haskell",
+            "Julia",
+            "Dart",
+            "Lua",
+            "Perl",
+            "Assembleur",
+            "Assembly",
+            "Prolog",
+            "Elixir",
+            "Solidity",
+            "VHDL",
+            "Fortran",
+        ),
+    ),
+    "IA & Data": (
+        ("ia", "intelligence artificielle", "data", "machine learning", "ml"),
+        (
+            "Machine Learning",
+            "Deep Learning",
+            "LLM",
+            "LLMs",
+            "RAG",
+            "NLP",
+            "TAL",
+            "Traitement du langage naturel",
+            "IA générative",
+            "Generative AI",
+            "PyTorch",
+            "TensorFlow",
+            "Keras",
+            "scikit-learn",
+            "Pandas",
+            "NumPy",
+            "SciPy",
+            "Hugging Face",
+            "Transformers",
+            "LangChain",
+            "LlamaIndex",
+            "LangGraph",
+            "embeddings",
+            "recherche sémantique",
+            "semantic search",
+            "Computer Vision",
+            "Vision par ordinateur",
+            "OpenCV",
+            "Spark",
+            "PySpark",
+            "Hadoop",
+            "dbt",
+            "Airflow",
+            "Jupyter",
+            "Matplotlib",
+            "Seaborn",
+            "Plotly",
+            "MLflow",
+            "XGBoost",
+            "LightGBM",
+            "Whisper",
+            "Ollama",
+            "OpenAI",
+            "Gemini",
+            "MCP",
+            "Model Context Protocol",
+            "agents IA",
+            "AI agents",
+            "prompt engineering",
+            "fine-tuning",
+            "Streamlit",
+            "Gradio",
+            "Power BI",
+            "Tableau",
+            "data science",
+            "data engineering",
+            "statistiques",
+            "ETL",
+            "Polars",
+            "reconnaissance vocale",
+            "speech recognition",
+            "reinforcement learning",
+            "apprentissage par renforcement",
+            "appel d'outils",
+            "tool calling",
+            "function calling",
+        ),
+    ),
+    "Web & API": (
+        ("web", "api", "backend", "frontend", "développement", "logiciel"),
+        (
+            "React",
+            "Vue.js",
+            "Vue",
+            "Angular",
+            "Svelte",
+            "Next.js",
+            "Nuxt",
+            "Node.js",
+            "Express",
+            "NestJS",
+            "FastAPI",
+            "Django",
+            "Flask",
+            "Spring",
+            "Spring Boot",
+            "Laravel",
+            "Symfony",
+            "Ruby on Rails",
+            "ASP.NET",
+            ".NET",
+            "REST",
+            "API REST",
+            "REST API",
+            "REST APIs",
+            "GraphQL",
+            "gRPC",
+            "WebSocket",
+            "Tailwind",
+            "Tailwind CSS",
+            "Bootstrap",
+            "jQuery",
+            "Vite",
+            "Webpack",
+            "React Native",
+            "Flutter",
+            "Android",
+            "iOS",
+            "Electron",
+            "Architecture logicielle",
+            "microservices",
+            "Keycloak",
+            "OAuth",
+            "SSO",
+        ),
+    ),
+    "Bases de données": (
+        ("base de données", "bases de données", "database", "sgbd"),
+        (
+            "PostgreSQL",
+            "MySQL",
+            "MariaDB",
+            "SQLite",
+            "Oracle",
+            "SQL Server",
+            "MongoDB",
+            "Redis",
+            "Elasticsearch",
+            "OpenSearch",
+            "Cassandra",
+            "Neo4j",
+            "Snowflake",
+            "BigQuery",
+            "Redshift",
+            "Qdrant",
+            "pgvector",
+            "Pinecone",
+            "Weaviate",
+            "Chroma",
+            "Milvus",
+            "SurrealDB",
+            "Supabase",
+            "Firebase",
+            "DynamoDB",
+            "ClickHouse",
+            "DuckDB",
+        ),
+    ),
+    "Cloud & DevOps": (
+        ("cloud", "devops", "infra", "système", "systèmes"),
+        (
+            "Docker",
+            "Docker Compose",
+            "Kubernetes",
+            "K8s",
+            "AWS",
+            "GCP",
+            "Google Cloud",
+            "Azure",
+            "Terraform",
+            "Ansible",
+            "CI/CD",
+            "GitHub Actions",
+            "GitLab CI",
+            "Jenkins",
+            "Linux",
+            "Nginx",
+            "Helm",
+            "Prometheus",
+            "Grafana",
+            "Cloudflare",
+            "Vercel",
+            "Heroku",
+            "OVH",
+            "Unix",
+            "SSH",
+            "Proxmox",
+            "Podman",
+        ),
+    ),
+    "Outils": (
+        ("outil",),
+        (
+            "Git",
+            "GitHub",
+            "GitLab",
+            "Bitbucket",
+            "Jira",
+            "Confluence",
+            "Notion",
+            "LaTeX",
+            "Overleaf",
+            "VS Code",
+            "IntelliJ",
+            "Figma",
+            "Postman",
+            "Excel",
+            "Trello",
+            "Slack",
+            "Make",
+            "CMake",
+            "Maven",
+            "Gradle",
+            "npm",
+            "pytest",
+            "JUnit",
+            "Selenium",
+            "Playwright",
+            "Cypress",
+        ),
+    ),
+    "Méthodes": (
+        ("méthode", "gestion de projet"),
+        (
+            "Agile",
+            "Scrum",
+            "Kanban",
+            "TDD",
+            "DevOps",
+            "UML",
+            "Merise",
+            "Design patterns",
+            "Clean code",
+            "revue de code",
+            "code review",
+            "tests unitaires",
+            "MLOps",
+        ),
+    ),
+}
+
+_BY_NAME = {
+    normalize(name): category for category, (_, names) in _CATEGORIES.items() for name in names
+}
+
+
+def canonical(name: str) -> str | None:
+    """La catégorie type d'une compétence connue du dictionnaire."""
+    key = normalize(name)
+    if key in _BY_NAME:
+        return _BY_NAME[key]
+    # Un pluriel (« LLMs », « APIs »).
+    if key.endswith("s") and key[:-1] in _BY_NAME:
+        return _BY_NAME[key[:-1]]
+    return None
+
+
+def _matches(category: str, canonical_name: str) -> bool:
+    """« Outils & Systèmes » est une catégorie d'outils : un mot y commence par « outil »."""
+    label = category.lower()
+    return any(
+        re.search(rf"(?<![\w]){re.escape(word)}", label) for word in _CATEGORIES[canonical_name][0]
+    )
+
+
+def guess(name: str, existing: list[str]) -> str:
+    """La catégorie à donner à une nouvelle compétence, parmi celles qui existent si possible."""
+    found = canonical(name)
+    if found is None:
+        return "Autres"
+    for category in existing:
+        if _matches(category, found):
+            return category
+    return found

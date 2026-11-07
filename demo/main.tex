@@ -1,0 +1,267 @@
+% Généré par CV Builder à partir de content.json et style.json.
+\documentclass[10pt,a4paper]{article}
+
+% -------------------- PACKAGES --------------------
+\usepackage[margin=1cm]{geometry}
+\usepackage{fontspec}
+% Le texte extrait du PDF reprend exactement les caractères tapés (« - »,
+% « · »…) : indispensable pour les ATS.
+\XeTeXgenerateactualtext=1
+\usepackage[french]{babel}
+\frenchsetup{StandardLists=true}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+
+% -------------------- POLICE --------------------
+% Ligatures « fi », « fl » coupées : un ATS lit alors des lettres normales.
+\setmainfont{Lato}[
+  Path=<fonts>/Lato/,
+  Extension=.ttf,
+  UprightFont=*-Regular,
+  BoldFont=*-Bold,
+  ItalicFont=*-Italic,
+  BoldItalicFont=*-BoldItalic,
+  Numbers=Proportional,
+  Ligatures={TeX, CommonOff}]
+
+% -------------------- COLORS --------------------
+\definecolor{cvprimary}{HTML}{001F82}
+\definecolor{cvsecondary}{HTML}{4F6B8A}
+\definecolor{cvtext}{HTML}{000000}
+\definecolor{cvaccent}{HTML}{2E7D32}
+\definecolor{cvband}{HTML}{ECF3FB}
+\definecolor{cvmuted}{HTML}{5B6472}
+\definecolor{cvtitleband}{HTML}{E3EAF6}
+\definecolor{cvlink}{HTML}{1F4FA3}
+
+% -------------------- STYLE --------------------
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+
+% Titre de rubrique avec son filet. L'espace avant est explicite : dans une
+% minipage, \section le perd.
+\newcommand{\rubrique}[2][12pt plus 2fil]{%
+  \par\vspace{#1}%
+  {\fontsize{13}{15.5}\selectfont \textbf{\color{cvprimary}#2}\par}%
+  \vspace{2pt}{\color{cvprimary}\hrule height 0.4pt}\vspace{7pt}}
+
+\setlist[itemize]{label=\textbullet, leftmargin=12pt, labelsep=5pt, itemsep=1.5pt, parsep=0pt, topsep=2pt}
+\pagestyle{empty}
+
+% Espace entre deux entrées d'une rubrique, et entre deux blocs de compétences.
+\newcommand{\entre}{\par\vspace{7pt plus 1fil}}
+\newcommand{\petitentre}{\par\vspace{5pt plus 0.5fil}}
+% Hauteur laissée aux deux colonnes : tout le reste de la page.
+\newlength{\hauteurcol}
+
+
+% -------------------- DOCUMENT --------------------
+\begin{document}
+
+% -------------------- HEADER --------------------
+% La photo, carrée, a exactement la hauteur du bloc de texte à côté.
+%@ header
+\newsavebox{\blocentete}
+\sbox{\blocentete}{\begin{minipage}[t]{0.78\textwidth}
+    \vspace{0pt}\raggedright
+    {\fontsize{24.88}{30}\selectfont \textbf{\color{cvprimary}CAMILLE LAURENT}}\par
+    \vspace{12pt}
+    {\fontsize{12}{14}\selectfont \textbf{\color{cvprimary}Élève en école d'ingénieurs | Data Science \& IA}}\par
+    \vspace{7pt}
+    En dernière année d'école d'ingénieurs, spécialité data science, à la recherche d'un stage de fin d'études en IA appliquée à partir de février 2027.\par
+\end{minipage}}
+\noindent\usebox{\blocentete}\hfill
+\begin{minipage}[t]{\dimexpr\ht\blocentete+\dp\blocentete\relax}
+    \vspace{0pt}
+    \includegraphics[width=\linewidth]{imgcv.jpg}
+\end{minipage}
+
+\vspace{6pt}
+{\color{cvprimary}\rule{\textwidth}{0.4pt}}
+\vspace{2pt}
+
+%@ contact 0
+\textbf{Lyon, France} \quad | \quad \textbf{Téléphone :} 06 00 00 00 00 \quad | \quad \textbf{Email :} \href{mailto:camille.laurent@example.com}{camille.laurent@example.com} \quad | \quad \textbf{Permis B}
+
+%@ contact 1
+\textbf{LinkedIn :} \href{https://www.linkedin.com/in/camille-exemple/}{linkedin.com/in/camille-exemple} \quad | \quad \textbf{GitHub :} \href{https://github.com/camille-exemple}{github.com/camille-exemple} \quad | \quad \textbf{Mobilité :} toute la France
+
+\vspace{10pt}
+
+% -------------------- DEUX COLONNES --------------------
+% Les deux colonnes prennent toute la hauteur restante ; l'espace libre se
+% répartit entre les rubriques et les entrées.
+%@ none
+\par\setlength{\hauteurcol}{\dimexpr\pagegoal-\pagetotal-\baselineskip-4pt\relax}
+\noindent
+\begin{minipage}[t][\hauteurcol][s]{0.41\textwidth}
+\raggedright
+%@ none
+% Fond de la colonne : du haut de la colonne au bas de la page, depuis le bord
+% gauche de la page jusqu'au bout des filets. (Deux compilations.)
+\begin{tikzpicture}[remember picture, overlay]
+  \fill[cvband] ([yshift=14pt]current page.west |- 0,0) rectangle (\linewidth, 0 |- current page.south);
+\end{tikzpicture}%
+
+%@ section formation
+\rubrique[0pt]{FORMATION}
+
+%@ item formation 0
+\textbf{Diplôme d'ingénieur, Data Science}\\
+École d'ingénieurs du Numérique, Lyon\\
+\textbf{\textit{2024 – 2027}}\\
+3e année, option \textbf{apprentissage automatique} et statistique.
+
+\entre
+%@ item formation 1
+\textbf{Classes préparatoires (MPSI, MP)}\\
+Lycée du Parc (exemple), Lyon\\
+\textbf{\textit{2022 – 2024}}\\
+Mathématiques (algèbre linéaire, probabilités), physique et informatique.
+
+
+%@ section competences
+\rubrique{COMPÉTENCES}
+
+%@ item competences 0
+\textbf{Programmation}\\
+Python, C/C++, Java, TypeScript, SQL.
+
+\petitentre
+%@ item competences 1
+\textbf{Data \& IA}\\
+Apprentissage automatique (scikit-learn, LightGBM), deep learning (PyTorch), vision par ordinateur, NLP, LLM, RAG, recherche sémantique.
+
+\petitentre
+%@ item competences 2
+\textbf{Développement}\\
+API REST (FastAPI), React, tests automatisés, architecture logicielle.
+
+\petitentre
+%@ item competences 3
+\textbf{Outils}\\
+Git, Docker, Linux, PostgreSQL, CI/CD, LaTeX.
+
+
+%@ section soft-skills
+\rubrique{SOFT SKILLS}
+
+{\renewcommand{\arraystretch}{1.15}%
+\begin{tabular}{@{}p{0.46\linewidth}@{\hspace{0.04\linewidth}}p{0.5\linewidth}@{}}
+%@ item soft-skills 0
+\textbullet\ Autonomie & \textbullet\ Travail en équipe \\
+%@ item soft-skills 2
+\textbullet\ Communication & \textbullet\ Adaptabilité \\
+%@ item soft-skills 4
+\multicolumn{2}{@{}l@{}}{\textbullet\ Gestion du temps et des priorités} \\
+%@ item soft-skills 5
+\multicolumn{2}{@{}l@{}}{\textbullet\ Esprit d'analyse et de synthèse} \\
+\end{tabular}\par}
+
+
+%@ section langues
+\rubrique{LANGUES}
+
+%@ item langues 0
+\textbf{Français :} langue maternelle\\
+%@ item langues 1
+\textbf{Anglais :} courant (C1, TOEIC 945)\\
+%@ item langues 2
+\textbf{Espagnol :} intermédiaire (B1)\\
+%@ item langues 3
+\textbf{Italien :} notions
+
+
+%@ section centres-interet
+\rubrique{CENTRES D'INTÉRÊT}
+
+\begin{itemize}[leftmargin=*]
+%@ item centres-interet 0
+    \item \textbf{Escalade} en club, deux séances par semaine
+%@ item centres-interet 1
+    \item \textbf{Photographie} de rue et retouche
+%@ item centres-interet 2
+    \item \textbf{Bénévolat} : soutien scolaire en mathématiques
+%@ item centres-interet 3
+    \item \textbf{Course à pied} : semi-marathon de Lyon
+\end{itemize}
+
+
+%@ none
+\end{minipage}%
+\hfill
+\begin{minipage}[t][\hauteurcol][s]{0.55\textwidth}
+\raggedright
+%@ none
+\setlist*[itemize]{itemsep=4pt plus 1pt, topsep=4pt plus 1pt}
+
+%@ section experience
+\rubrique[0pt]{EXPÉRIENCE PROFESSIONNELLE}
+
+%@ item experience 0
+{\fontsize{11}{13.5}\selectfont \textbf{Stage Data Scientist}\enspace{\fontsize{10}{12}\selectfont \textit{· Équipe de trois stagiaires}}\par}
+{\fontsize{11}{13.5}\selectfont Logistica (exemple), Villeurbanne\hfill{\fontsize{10}{12}\selectfont \textbf{\textit{Juin 2026 – Août 2026}}}\par}\vspace{3pt}
+\begin{itemize}
+%@ bullet experience 0 0
+    \item Prévision de la demande à 14 jours pour 1 200 références : modèles LightGBM sur l'historique des ventes, validation glissante dans le temps.
+%@ bullet experience 0 1
+    \item Pipeline de préparation des données en Python et SQL (PostgreSQL), relancé chaque nuit sous Docker.
+%@ bullet experience 0 2
+    \item API FastAPI qui sert les prévisions en production au logiciel de réapprovisionnement, avec tests automatisés.
+%@ bullet experience 0 3
+    \item Tableau de bord des écarts entre prévision et ventes, présenté chaque semaine à l'équipe achats.
+\end{itemize}
+
+\entre
+%@ item experience 1
+{\fontsize{11}{13.5}\selectfont \textbf{Conseil en librairie (job étudiant)}\enspace{\fontsize{10}{12}\selectfont \textit{}}\par}
+{\fontsize{11}{13.5}\selectfont Librairie (exemple), Lyon\hfill{\fontsize{10}{12}\selectfont \textbf{\textit{Septembre 2025 – Aujourd'hui}}}\par}\vspace{3pt}
+\begin{itemize}
+%@ bullet experience 1 0
+    \item Accueil et conseil des clients, commandes spéciales et suivi des livraisons.
+%@ bullet experience 1 1
+    \item Inventaire mensuel d'un rayon et propositions de réassort à partir des ventes.
+\end{itemize}
+
+
+%@ section projets
+\rubrique{PROJETS}
+
+%@ item projets 0
+\par\textbf{TrafficLens – Comptage de véhicules}\enspace{\fontsize{9}{11}\selectfont \textit{· Projet d'école}}\hfill\textbf{\textit{2026}}\par
+Détection et suivi de véhicules sur vidéo (YOLO, PyTorch), comptage par voie et par heure.
+\entre
+%@ item projets 1
+\par\textbf{Assistant de questions sur des documents}\enspace{\fontsize{9}{11}\selectfont \textit{· Projet personnel}}\hfill\textbf{\textit{2026}}\par
+Recherche sémantique et réponses sourcées sur des PDF (embeddings, pgvector, FastAPI, React).
+\entre
+%@ item projets 2
+\par\textbf{Planificateur de tournées}\enspace{\fontsize{9}{11}\selectfont \textit{· En binôme}}\hfill\textbf{\textit{2025}}\par
+Optimisation de tournées de livraison (heuristiques, OR-Tools) et carte interactive (React).
+\entre
+%@ item projets 3
+\par\textbf{Simulation de fluides 2D}\hfill\textbf{\textit{2024}}\par
+Différences finies en C++ et rendu temps réel avec OpenGL.
+
+
+%@ section associatif
+\rubrique{TRAVAIL ASSOCIATIF}
+
+%@ item associatif 0
+\textbf{Trésorerie du bureau des sports}\\
+Association sportive de l'école \hfill \textbf{\textit{2024 – Aujourd'hui}}\par\vspace{3pt}
+\begin{itemize}
+%@ bullet associatif 0 0
+    \item Budget annuel des activités sportives, suivi des dépenses et des subventions.
+%@ bullet associatif 0 1
+    \item Organisation d'un tournoi inter-écoles de 200 participants.
+\end{itemize}
+
+
+%@ none
+\end{minipage}
+
+\end{document}

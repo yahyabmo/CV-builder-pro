@@ -1,0 +1,17 @@
+- c'est avec un grand intérêt
+- c'est avec enthousiasme
+- je me permets
+- passionné
+- dynamique et motivé
+- fort de
+- n'hésitez pas
+- je suis convaincu que mon profil
+- relever de nouveaux défis
+- vivement intéressé
+- par la présente
+- environnement stimulant
+- prestigieuse
+- je reste à votre entière disposition
+- véritable atout
+- valeur ajoutée
+- —

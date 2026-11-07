@@ -1,0 +1,254 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/plus-jakarta-sans";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Plus Jakarta Sans Variable', 'Segoe UI', system-ui, sans-serif;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-muted: var(--sidebar-muted);
+    --color-sidebar-surface: var(--sidebar-surface);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-canvas: var(--canvas);
+    /* Statuts des candidatures et pastilles d'entreprise : texte et fond doux. */
+    --color-status-todo: var(--status-todo);
+    --color-status-todo-soft: var(--status-todo-soft);
+    --color-status-sent: var(--status-sent);
+    --color-status-sent-soft: var(--status-sent-soft);
+    --color-status-interview: var(--status-interview);
+    --color-status-interview-soft: var(--status-interview-soft);
+    --color-status-offer: var(--status-offer);
+    --color-status-offer-soft: var(--status-offer-soft);
+    --color-status-refused: var(--status-refused);
+    --color-status-refused-soft: var(--status-refused-soft);
+    --color-status-violet: var(--status-violet);
+    --color-status-violet-soft: var(--status-violet-soft);
+    --color-status-teal: var(--status-teal);
+    --color-status-teal-soft: var(--status-teal-soft);
+    --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    /* Cartes et boutons au même arrondi (12 px), comme choisi dans l'Atelier du thème. */
+    --radius-xl: var(--radius);
+    --radius-2xl: calc(var(--radius) * 1.35);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Thème choisi le 06/11 dans l'Atelier du thème : l'indigo de toujours, un fond
+   légèrement teinté d'indigo, des cartes blanches à ombre douce sans bordure, des
+   boutons en relief arrondis à 12 px, Plus Jakarta Sans, et une barre latérale foncée
+   (son propre jeu de couleurs : .sidebar-scope). Le thème sombre redéfinit les mêmes jetons. */
+:root {
+    --background: oklch(0.962 0.022 268.9);
+    --foreground: oklch(0.24 0.024 268.9);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.24 0.024 268.9);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.24 0.024 268.9);
+    --primary: oklch(0.426 0.157 268.9);
+    --primary-foreground: oklch(0.985 0.003 268.9);
+    --secondary: oklch(0.955 0.01 268.9);
+    --secondary-foreground: oklch(0.24 0.024 268.9);
+    --muted: oklch(0.955 0.01 268.9);
+    --muted-foreground: oklch(0.52 0.026 268.9);
+    --accent: oklch(0.948 0.035 268.9);
+    --accent-foreground: oklch(0.42 0.157 268.9);
+    --destructive: oklch(0.577 0.215 27);
+    --border: oklch(0.918 0.01 268.9);
+    --input: oklch(0.882 0.01 268.9);
+    --ring: oklch(0.58 0.141 268.9);
+    --success: oklch(0.58 0.13 155);
+    --warning: oklch(0.70 0.15 70);
+    --canvas: oklch(0.94 0.008 268.9);
+    --chart-1: oklch(0.70 0.10 266);
+    --chart-2: oklch(0.55 0.14 266);
+    --chart-3: oklch(0.45 0.16 266);
+    --chart-4: oklch(0.37 0.15 266);
+    --chart-5: oklch(0.29 0.12 266);
+    --radius: 0.75rem;
+    --shadow-card: 0 1px 2px rgb(16 24 40 / 0.07), 0 6px 18px -6px rgb(16 24 40 / 0.16);
+    --shadow-button: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 1px 2px rgb(16 24 40 / 0.16), 0 6px 14px -6px var(--primary);
+    --shadow-control: 0 1px 2px rgb(16 24 40 / 0.07);
+    --status-todo: oklch(0.45 0.02 264);
+    --status-todo-soft: oklch(0.945 0.006 264);
+    --status-sent: oklch(0.426 0.157 268.9);
+    --status-sent-soft: oklch(0.948 0.035 268.9);
+    --status-interview: oklch(0.47 0.12 58);
+    --status-interview-soft: oklch(0.95 0.05 75);
+    --status-offer: oklch(0.45 0.11 155);
+    --status-offer-soft: oklch(0.95 0.04 155);
+    --status-refused: oklch(0.53 0.015 264);
+    --status-refused-soft: oklch(0.955 0.004 264);
+    --status-violet: oklch(0.45 0.13 310);
+    --status-violet-soft: oklch(0.95 0.03 310);
+    --status-teal: oklch(0.45 0.08 220);
+    --status-teal-soft: oklch(0.95 0.025 220);
+    --sidebar: oklch(0.235 0.045 268.9);
+    --sidebar-foreground: oklch(0.93 0.01 268.9);
+    --sidebar-muted: oklch(0.72 0.025 268.9);
+    --sidebar-surface: oklch(0.285 0.05 268.9);
+    --sidebar-primary: oklch(0.88 0.094 268.9);
+    --sidebar-primary-foreground: oklch(0.235 0.045 268.9);
+    --sidebar-accent: oklch(0.32 0.06 268.9);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(0.3 0.03 268.9);
+    --sidebar-ring: oklch(0.7 0.12 268.9);
+}
+
+.dark {
+    --background: oklch(0.175 0.022 268.9);
+    --foreground: oklch(0.95 0.005 268.9);
+    --card: oklch(0.21 0.024 268.9);
+    --card-foreground: oklch(0.95 0.005 268.9);
+    --popover: oklch(0.23 0.026 268.9);
+    --popover-foreground: oklch(0.95 0.005 268.9);
+    --primary: oklch(0.72 0.15 268.9);
+    --primary-foreground: oklch(0.18 0.03 268.9);
+    --secondary: oklch(0.255 0.026 268.9);
+    --secondary-foreground: oklch(0.93 0.005 268.9);
+    --muted: oklch(0.255 0.026 268.9);
+    --muted-foreground: oklch(0.70 0.015 268.9);
+    --accent: oklch(0.30 0.06 268.9);
+    --accent-foreground: oklch(0.88 0.078 268.9);
+    --destructive: oklch(0.68 0.19 22);
+    --border: oklch(1 0 0 / 9%);
+    --input: oklch(1 0 0 / 16%);
+    --ring: oklch(0.70 0.15 268.9);
+    --success: oklch(0.72 0.13 155);
+    --warning: oklch(0.80 0.14 75);
+    --canvas: oklch(0.14 0.022 268.9);
+    --chart-1: oklch(0.80 0.08 266);
+    --chart-2: oklch(0.70 0.11 266);
+    --chart-3: oklch(0.60 0.13 266);
+    --chart-4: oklch(0.50 0.14 266);
+    --chart-5: oklch(0.40 0.13 266);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px -6px rgb(0 0 0 / 0.5);
+    --shadow-button: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 14px -6px color-mix(in oklch, var(--primary) 45%, transparent);
+    --shadow-control: 0 1px 2px rgb(0 0 0 / 0.3);
+    --status-todo: oklch(0.80 0.015 264);
+    --status-todo-soft: oklch(0.29 0.015 264);
+    --status-sent: oklch(0.82 0.10 266);
+    --status-sent-soft: oklch(0.31 0.06 266);
+    --status-interview: oklch(0.86 0.12 75);
+    --status-interview-soft: oklch(0.33 0.06 70);
+    --status-offer: oklch(0.83 0.12 155);
+    --status-offer-soft: oklch(0.31 0.06 155);
+    --status-refused: oklch(0.66 0.01 264);
+    --status-refused-soft: oklch(0.26 0.01 264);
+    --status-violet: oklch(0.82 0.10 310);
+    --status-violet-soft: oklch(0.31 0.06 310);
+    --status-teal: oklch(0.82 0.08 220);
+    --status-teal-soft: oklch(0.31 0.05 220);
+    --sidebar: oklch(0.125 0.03 268.9);
+    --sidebar-foreground: oklch(0.95 0.005 268.9);
+    --sidebar-muted: oklch(0.68 0.02 268.9);
+    --sidebar-surface: oklch(0.18 0.035 268.9);
+    --sidebar-primary: oklch(0.72 0.15 268.9);
+    --sidebar-primary-foreground: oklch(0.18 0.03 268.9);
+    --sidebar-accent: oklch(0.22 0.05 268.9);
+    --sidebar-accent-foreground: oklch(0.95 0.005 268.9);
+    --sidebar-border: oklch(1 0 0 / 7%);
+    --sidebar-ring: oklch(0.70 0.15 268.9);
+}
+
+/* La barre latérale foncée : tout ce qu'elle contient (recherche, CV de base, textes
+   discrets, bordures) reprend ses couleurs au lieu de celles des pages. */
+.sidebar-scope {
+    --background: var(--sidebar-surface);
+    --foreground: var(--sidebar-foreground);
+    --muted-foreground: var(--sidebar-muted);
+    --muted: var(--sidebar-accent);
+    --border: var(--sidebar-border);
+    --input: var(--sidebar-border);
+    --card: var(--sidebar-surface);
+    --primary: var(--sidebar-primary);
+    --primary-foreground: var(--sidebar-primary-foreground);
+    --ring: var(--sidebar-ring);
+    color-scheme: dark;
+}
+
+/* Les boutons en relief, et le léger relief des boutons secondaires et des champs. */
+@utility shadow-relief {
+    box-shadow: var(--shadow-button);
+}
+@utility shadow-control {
+    box-shadow: var(--shadow-control);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  /* Une carte : pas de bordure visible, une ombre douce. Dans la couche de base, pour
+     qu'une bordure d'état (sélection, alerte) ou une ombre au survol passe devant. */
+  .surface {
+    border-color: transparent;
+    box-shadow: var(--shadow-card);
+    }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+    }
+  html {
+    @apply font-sans antialiased;
+    }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+/* Un champ atteint depuis l'aperçu ou le sommaire : un anneau qui s'efface. */
+@keyframes cvb-flash {
+  from { box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 45%, transparent); }
+  to { box-shadow: 0 0 0 3px transparent; }
+}
+[data-flash] {
+  border-radius: var(--radius-lg);
+  animation: cvb-flash 1.8s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-flash] {
+    animation-name: none !important;
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+}
+

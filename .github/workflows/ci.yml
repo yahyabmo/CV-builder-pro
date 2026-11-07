@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 : celui d'Ubuntu 24.04 et de WSL ; 3.13 : la version de référence.
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      # Un miroir Ubuntu qui ne répond plus a déjà bloqué ce job des heures : délais et
+      # reprises pour apt, et une limite de temps pour l'étape.
+      - name: LaTeX
+        timeout-minutes: 15
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          sudo apt-get $APT update -q
+          sudo apt-get $APT install -y -q texlive-xetex texlive-latex-extra texlive-pictures \
+            texlive-lang-french latexmk poppler-utils
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -q -r backend/requirements-dev.txt
+      - run: ruff check backend && ruff format --check backend
+      - run: ruff check --config backend/pyproject.toml scripts && ruff format --config backend/pyproject.toml --check scripts
+      - run: cd backend && python -m pytest -q
+      - name: Diagnostic LaTeX
+        if: failure()
+        run: xelatex --version | head -1 && cd backend && python -m app.tools.make_demo
+
+  relais:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relais
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      # Sans dépendance : un faux stockage et un faux Google.
+      - run: node --test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npm ci
+      - run: npx tsc -b && npx oxlint src
+      - run: npm run build

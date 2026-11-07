@@ -1,0 +1,346 @@
+"""Un CV en PDF devient la version classique, sans rien réécrire.
+
+1. ``read_pdf`` : le texte (pdftotext) et la photo la plus grande (pdfimages).
+2. L'IA range ce texte dans ``ImportedCV`` (prompts/import.md).
+3. ``to_content`` : les rubriques de l'appli, sur le modèle du CV fictif.
+4. ``checks`` : les mots absents du PDF, et les lignes restées sans rubrique.
+
+Chaque import vit dans ``data/imports/<id>/`` : le PDF, son texte, sa photo et le
+résultat de la lecture, pour reprendre la relecture après un rechargement.
+"""
+
+import json
+import re
+import secrets
+import shutil
+import subprocess
+import tempfile
+import unicodedata
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+from PIL import Image, UnidentifiedImageError
+from pydantic import BaseModel
+
+from app.ai.schemas import ImportedContact, ImportedCV
+from app.latex.compile import page_count
+from app.models.content import (
+    BulletsSection,
+    ContactItem,
+    CVContent,
+    EducationItem,
+    EducationSection,
+    ExperienceItem,
+    ExperienceSection,
+    GridItem,
+    GridSection,
+    Header,
+    Language,
+    LanguagesSection,
+    ProjectItem,
+    ProjectsSection,
+    SkillGroup,
+    SkillsSection,
+)
+from app.paths import DATA_DIR, DEMO_DIR
+from app.services import photo
+from app.services.library_import import split_skills
+
+IMPORTS_DIR = DATA_DIR / "imports"
+MAX_BYTES = 10 * 1024 * 1024
+# En dessous, le PDF n'a pas de texte à lire : c'est un scan.
+MIN_WORDS = 30
+SOURCE = "source.pdf"
+TEXT = "text.txt"
+RESULT = "result.json"
+# Une photo de CV : assez grande, à peu près carrée ou en portrait.
+MIN_PHOTO_SIDE = 80
+
+TITLES_EN = {
+    "FORMATION": "EDUCATION",
+    "COMPÉTENCES": "SKILLS",
+    "SOFT SKILLS": "SOFT SKILLS",
+    "LANGUES": "LANGUAGES",
+    "CENTRES D'INTÉRÊT": "INTERESTS",
+    "EXPÉRIENCE PROFESSIONNELLE": "PROFESSIONAL EXPERIENCE",
+    "PROJETS": "PROJECTS",
+    "TRAVAIL ASSOCIATIF": "VOLUNTEERING",
+}
+
+
+class UnreadablePdf(ValueError):
+    """Un PDF que l'appli ne peut pas lire ; le message s'affiche tel quel."""
+
+
+class UnknownImport(LookupError):
+    pass
+
+
+@dataclass
+class Reading:
+    id: str
+    words: int
+    pages: int | None
+    photo: bool
+
+
+class Check(BaseModel):
+    kind: Literal["absent", "unplaced"]
+    where: str
+    text: str
+
+
+def folder(import_id: str) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{12}", import_id) or not (IMPORTS_DIR / import_id).is_dir():
+        raise UnknownImport(import_id)
+    return IMPORTS_DIR / import_id
+
+
+def pdf_text(pdf: Path) -> str:
+    """Le texte du PDF, ligatures dépliées et mots coupés en fin de ligne recollés."""
+    run = subprocess.run(
+        ["pdftotext", "-enc", "UTF-8", str(pdf), "-"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if run.returncode != 0:
+        raise UnreadablePdf("Ce PDF ne s'ouvre pas : il est peut-être protégé ou abîmé.")
+    text = unicodedata.normalize("NFKC", run.stdout)
+    return re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+
+
+def _photo(pdf: Path, target: Path) -> bool:
+    """Garde la plus grande image à peu près carrée ou en portrait : la photo du CV."""
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run(
+            ["pdfimages", "-png", str(pdf), f"{tmp}/image"],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        best: tuple[int, Path] | None = None
+        for image in Path(tmp).glob("*.png"):
+            try:
+                with Image.open(image) as opened:
+                    width, height = opened.size
+            except (UnidentifiedImageError, OSError):
+                continue
+            if min(width, height) < MIN_PHOTO_SIDE or not 0.6 <= width / height <= 1.7:
+                continue
+            if best is None or width * height > best[0]:
+                best = (width * height, image)
+        if best is None:
+            return False
+        try:
+            photo.store(target, best[1].read_bytes())
+        except photo.BadImage:
+            return False
+    return True
+
+
+def read_pdf(data: bytes) -> Reading:
+    if not data.startswith(b"%PDF"):
+        raise UnreadablePdf("Ce fichier n'est pas un PDF.")
+    if len(data) > MAX_BYTES:
+        raise UnreadablePdf("Ce PDF dépasse 10 Mo.")
+    import_id = secrets.token_hex(6)
+    target = IMPORTS_DIR / import_id
+    target.mkdir(parents=True)
+    source = target / SOURCE
+    source.write_bytes(data)
+    try:
+        text = pdf_text(source)
+    except UnreadablePdf:
+        shutil.rmtree(target)
+        raise
+    words = len(re.findall(r"\w+", text))
+    if words < MIN_WORDS:
+        shutil.rmtree(target)
+        raise UnreadablePdf(
+            "Ce PDF ne contient presque pas de texte : c'est sans doute un scan, une image. "
+            "Exporte ton CV en PDF depuis ton traitement de texte, ou remplis-le à la main."
+        )
+    (target / TEXT).write_text(text, encoding="utf-8")
+    return Reading(import_id, words, page_count(source), _photo(source, target))
+
+
+def text_of(import_id: str) -> str:
+    return (folder(import_id) / TEXT).read_text(encoding="utf-8")
+
+
+def has_photo(import_id: str) -> bool:
+    return (folder(import_id) / photo.PHOTO).exists()
+
+
+def is_demo_pdf(data: bytes) -> bool:
+    return data == (DEMO_DIR / "cv-exemple.pdf").read_bytes()
+
+
+# ─── Des rubriques lues aux sections de l'appli ──────────────────────────────
+
+
+def _contacts(contacts: list[ImportedContact]) -> list[list[ContactItem]]:
+    items = []
+    for contact in contacts:
+        text = contact.text.strip()
+        if not text:
+            continue
+        url = contact.url.strip() or None
+        if url is None and re.fullmatch(r"[^@\s]+@[^@\s]+\.\w+", text):
+            url = f"mailto:{text}"
+        label = contact.label.strip() or None
+        items.append(ContactItem(text=text, label=label, url=url, bold=label is None))
+    half = (len(items) + 1) // 2
+    return [line for line in (items[:half], items[half:]) if line]
+
+
+def _sentence(items: list[str]) -> str:
+    text = ", ".join(item.strip() for item in items if item.strip())
+    return text if not text or text[-1] in ".!?" else f"{text}."
+
+
+def _experiences(items: list) -> list[ExperienceItem]:
+    return [
+        ExperienceItem(
+            title=e.title, tag=e.tag, place=e.place, dates=e.dates, bullets=[b for b in e.bullets]
+        )
+        for e in items
+    ]
+
+
+def to_content(cv: ImportedCV, with_photo: bool, template: CVContent | None = None) -> CVContent:
+    """Le CV lu, rangé dans les sections du CV fictif ; une section vide est masquée."""
+    if template is None:
+        raw = (DEMO_DIR / "content.json").read_text(encoding="utf-8")
+        template = CVContent.model_validate_json(raw)
+    sections = []
+    for model in template.sections:
+        section = model.model_copy(deep=True)
+        if isinstance(section, EducationSection):
+            section.items = [
+                EducationItem(
+                    title=e.title, place=e.place, dates=e.dates, description=e.description
+                )
+                for e in cv.education
+            ]
+        elif isinstance(section, SkillsSection):
+            section.items = [
+                SkillGroup(label=g.label, text=_sentence(g.items)) for g in cv.skills if g.items
+            ]
+        elif isinstance(section, GridSection):
+            section.items = [GridItem(text=s, wide=len(s) > 22) for s in cv.soft_skills]
+        elif isinstance(section, LanguagesSection):
+            section.items = [Language(name=lang.name, level=lang.level) for lang in cv.languages]
+        elif isinstance(section, BulletsSection):
+            section.items = list(cv.interests)
+        elif isinstance(section, ExperienceSection):
+            source = cv.associative if section.layout == "compact" else cv.experience
+            section.items = _experiences(source)
+        elif isinstance(section, ProjectsSection):
+            section.items = [
+                ProjectItem(
+                    title=p.title,
+                    tag=p.tag,
+                    date=p.date,
+                    description=p.description,
+                    link=p.link.strip() or None,
+                )
+                for p in cv.projects
+            ]
+        section.visible = bool(section.items)
+        if cv.language == "en":
+            section.title = TITLES_EN.get(section.title, section.title)
+        sections.append(section)
+    header = Header(
+        name=cv.name,
+        headline=cv.headline,
+        summary=cv.summary,
+        photo=photo.PHOTO if with_photo else "",
+        contact_lines=_contacts(cv.contacts),
+    )
+    return CVContent(language=cv.language, header=header, sections=sections)
+
+
+# ─── Ce qu'il faut relire ────────────────────────────────────────────────────
+
+
+def _fold(word: str) -> str:
+    plain = unicodedata.normalize("NFKD", word.lower())
+    return "".join(c for c in plain if not unicodedata.combining(c))
+
+
+def _words(text: str) -> list[str]:
+    return [w for w in re.findall(r"\w+", text) if len(w) >= 3]
+
+
+def _fields(cv: ImportedCV) -> list[tuple[str, str]]:
+    found = [("Identité", cv.name), ("Titre", cv.headline), ("Accroche", cv.summary)]
+    found += [("Coordonnées", c.text) for c in cv.contacts]
+    for n, e in enumerate(cv.education, 1):
+        found.append((f"Formation {n}", f"{e.title} {e.place} {e.dates} {e.description}"))
+    for label, items in (("Expérience", cv.experience), ("Engagement", cv.associative)):
+        for n, e in enumerate(items, 1):
+            found.append((f"{label} {n}", f"{e.title} {e.tag} {e.place} {e.dates}"))
+            found += [(f"{label} {n}, puce {b}", text) for b, text in enumerate(e.bullets, 1)]
+    for n, p in enumerate(cv.projects, 1):
+        found.append((f"Projet {n}", f"{p.title} {p.tag} {p.date} {p.description}"))
+    found += [(f"Compétences : {g.label}", f"{g.label} {' '.join(g.items)}") for g in cv.skills]
+    found += [("Soft skills", s) for s in cv.soft_skills]
+    found += [("Langues", f"{lang.name} {lang.level}") for lang in cv.languages]
+    found += [("Centres d'intérêt", i) for i in cv.interests]
+    return found
+
+
+def checks(cv: ImportedCV, source: str) -> list[Check]:
+    """Chaque mot rangé doit venir du PDF ; une ligne sans rubrique est signalée."""
+    known = {_fold(w) for w in _words(source)}
+    out = []
+    for where, value in _fields(cv):
+        missing = list(dict.fromkeys(w for w in _words(value) if _fold(w) not in known))
+        if missing:
+            words = ", ".join(f"« {w} »" for w in missing[:4])
+            out.append(
+                Check(
+                    kind="absent",
+                    where=where,
+                    text=f"{words} n'apparaît pas dans ton PDF. Garde-le seulement s'il est vrai.",
+                )
+            )
+    for line in cv.unplaced:
+        if line.strip():
+            out.append(
+                Check(
+                    kind="unplaced",
+                    where="Sans rubrique",
+                    text=f"« {line.strip()} » n'a trouvé aucune rubrique : ajoute-le à la main "
+                    "s'il compte.",
+                )
+            )
+    return out
+
+
+def counts(content: CVContent) -> dict[str, int]:
+    """Ce que la bibliothèque recevra : compétences, expériences, projets."""
+    skills = experiences = projects = 0
+    for section in content.sections:
+        if isinstance(section, SkillsSection):
+            skills += sum(len(split_skills(group.text)) for group in section.items)
+        elif isinstance(section, ExperienceSection):
+            experiences += len(section.items)
+        elif isinstance(section, ProjectsSection):
+            projects += len(section.items)
+    return {"skills": skills, "experiences": experiences, "projects": projects}
+
+
+def save_result(import_id: str, data: dict) -> None:
+    (folder(import_id) / RESULT).write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def load_result(import_id: str) -> dict | None:
+    file = folder(import_id) / RESULT
+    return json.loads(file.read_text(encoding="utf-8")) if file.exists() else None

@@ -43,11 +43,10 @@ from app.models.content import (
     SkillGroup,
     SkillsSection,
 )
-from app.paths import DATA_DIR, DEMO_DIR
+from app.paths import DEMO_DIR, IMPORTS_DIR
 from app.services import photo
 from app.services.library_import import split_skills
 
-IMPORTS_DIR = DATA_DIR / "imports"
 MAX_BYTES = 10 * 1024 * 1024
 # En dessous, le PDF n'a pas de texte à lire : c'est un scan.
 MIN_WORDS = 30

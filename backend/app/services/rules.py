@@ -9,13 +9,12 @@ Les listes par défaut sont dans ``prompts/`` ; celles modifiées dans Réglages
 
 from pathlib import Path
 
-from app.paths import DATA_DIR, PROMPTS_DIR
+from app.paths import PROMPTS_DIR, RULES_DIR
 
 FILES: dict[str, str] = {
     "lettre": "lettre-regles.md",
     "tournures": "lettre-tournures.md",
 }
-RULES_DIR = DATA_DIR / "rules"
 
 
 class UnknownRules(LookupError):

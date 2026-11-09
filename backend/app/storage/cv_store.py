@@ -38,7 +38,7 @@ class UnknownCV(LookupError):
 def folder(slug: str) -> Path:
     """Le dossier d'un CV. L'identifiant est vérifié : jamais de chemin libre."""
     if slug == BASE_SLUG:
-        return BASE_DIR
+        return Path(BASE_DIR)
     if not _SLUG.match(slug):
         raise UnknownCV(slug)
     path = CVS_DIR / slug

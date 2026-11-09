@@ -1,4 +1,8 @@
-"""Application FastAPI de CV Builder (locale, un seul utilisateur).
+"""Application FastAPI de CV Builder.
+
+En local, une seule personne et ``data/``. En mode serveur (``CVB_MODE=serveur``),
+plusieurs personnes connectées par Cloudflare Access, chacune dans son dossier
+(``app/access.py``).
 
 Avec ``make start`` (ou l'image Docker), ce serveur sert aussi l'interface déjà
 construite (``frontend/dist``) : tout tient sur une seule adresse. Avec
@@ -12,6 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app import access
 from app.api import (
     ai_settings,
     assets,
@@ -25,13 +30,17 @@ from app.api import (
     target,
     welcome,
 )
-from app.paths import WEB_DIR, ensure_base
+from app.paths import WEB_DIR, ensure_base, server_mode, user_root
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    # Au démarrage du serveur seulement : les tests n'écrivent jamais dans data/.
-    ensure_base()
+    if server_mode():
+        # Sans réglages de connexion, le serveur ne démarre pas : jamais d'appli ouverte à tous.
+        access.config()
+    else:
+        # Au démarrage du serveur seulement : les tests n'écrivent jamais dans data/.
+        ensure_base()
     yield
 
 
@@ -44,6 +53,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Ajouté en dernier, donc passé en premier : la connexion avant tout le reste.
+app.add_middleware(access.AccessMiddleware)
 
 app.include_router(cvs.router)
 app.include_router(assets.router)
@@ -63,6 +75,14 @@ def health() -> dict[str, str]:
     # « app » distingue CV Builder Pro des autres applis qui répondent aussi sur /api/health
     # (le raccourci du bureau s'en sert pour savoir si c'est bien lui qui tourne).
     return {"status": "ok", "app": "cv-builder-pro"}
+
+
+@app.get("/api/me")
+def me() -> dict[str, str | None]:
+    """Qui est connecté : l'e-mail en mode serveur, rien en local."""
+    if not server_mode():
+        return {"mode": "local", "email": None}
+    return {"mode": "serveur", "email": user_root().name}
 
 
 _METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]

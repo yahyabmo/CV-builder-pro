@@ -42,6 +42,8 @@ import type {
   TargetRequest,
   Theme,
   Me,
+  AdminPeople,
+  AdminPersonDetail,
 } from './types'
 
 export class ApiError extends Error {
@@ -230,6 +232,14 @@ export const api = {
   getSettings: () => request<SettingsInfo>('/api/settings'),
   me: () => request<Me>('/api/me'),
   exportUrl: '/api/export',
+  adminPeople: () => request<AdminPeople>('/api/admin/people'),
+  adminInvite: (email: string) => request<AdminPeople>('/api/admin/people', { method: 'POST', body: JSON.stringify({ email }) }),
+  adminRemove: (email: string) => request<AdminPeople>(`/api/admin/people/${encodeURIComponent(email)}`, { method: 'DELETE' }),
+  adminErase: (email: string) => request<AdminPeople>(`/api/admin/people/${encodeURIComponent(email)}/data`, { method: 'DELETE' }),
+  adminPerson: (email: string) => request<AdminPersonDetail>(`/api/admin/people/${encodeURIComponent(email)}`),
+  adminPdfUrl: (email: string, slug: string, version: number | null) =>
+    `/api/admin/people/${encodeURIComponent(email)}/cvs/${slug}/pdf?v=${version ?? 0}`,
+  adminExportUrl: (email: string) => `/api/admin/people/${encodeURIComponent(email)}/export`,
   demoOffer: () => request<{ text: string }>('/api/target/demo-offer'),
   welcome: () => request<WelcomeState>('/api/welcome'),
   dismissWelcome: () => request<WelcomeState>('/api/welcome/dismiss', { method: 'POST' }),

@@ -26,6 +26,7 @@ from typing import Any
 
 import jwt
 
+from app import people
 from app.paths import as_user, ensure_base, server_mode
 
 log = logging.getLogger(__name__)
@@ -101,12 +102,12 @@ def _token(scope: Scope) -> str | None:
     return None
 
 
-async def _refuse(send: Send, message: str) -> None:
+async def _refuse(send: Send, message: str, status: int = 401) -> None:
     body = json.dumps({"detail": message}, ensure_ascii=False).encode()
     await send(
         {
             "type": "http.response.start",
-            "status": 401,
+            "status": status,
             "headers": [(b"content-type", b"application/json"), (b"cache-control", b"no-store")],
         }
     )
@@ -139,6 +140,12 @@ class AccessMiddleware:
             log.warning("connexion refusée : %s", error)
             await _refuse(send, "Connexion refusée. Reconnecte-toi.")
             return
+        # Retirée par l'administrateur : coupée tout de suite, même si Cloudflare la laisse
+        # encore passer jusqu'à la fin de sa session.
+        if not people.allowed(email):
+            await _refuse(send, "Ton accès a été retiré. Demande à Yahya.", 403)
+            return
+        people.seen(email)
         with as_user(email):
             # Première visite : le CV fictif, comme au premier lancement de l'appli.
             ensure_base()

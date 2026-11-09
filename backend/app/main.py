@@ -16,8 +16,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app import access
+from app import access, people
 from app.api import (
+    admin,
     ai_settings,
     assets,
     ats,
@@ -70,6 +71,7 @@ app.include_router(welcome.router)
 app.include_router(project_ideas.router)
 app.include_router(system.router)
 app.include_router(export.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health")
@@ -80,11 +82,12 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/me")
-def me() -> dict[str, str | None]:
-    """Qui est connecté : l'e-mail en mode serveur, rien en local."""
+def me() -> dict[str, str | bool | None]:
+    """Qui est connecté : l'e-mail en mode serveur (et s'il administre), rien en local."""
     if not server_mode():
-        return {"mode": "local", "email": None}
-    return {"mode": "serveur", "email": user_root().name}
+        return {"mode": "local", "email": None, "admin": False}
+    email = user_root().name
+    return {"mode": "serveur", "email": email, "admin": people.is_admin(email)}
 
 
 _METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]

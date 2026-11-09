@@ -1,4 +1,4 @@
-import { BookMarked, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sheet, Sparkles, Sun } from 'lucide-react'
+import { BookMarked, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sheet, ShieldCheck, Sparkles, Sun } from 'lucide-react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -32,6 +32,10 @@ export function Sidebar({ cvs, route, navigate, collapsed, onToggle }: SidebarPr
     { label: 'Cibler une offre', icon: <Sparkles className="size-4" />, active: route.view === 'target', go: () => navigate({ view: 'target' }), badge: 0 },
     { label: 'Bibliothèque', icon: <BookMarked className="size-4" />, active: route.view === 'library', go: () => navigate({ view: 'library' }), badge: 0 },
     { label: 'Réglages', icon: <Settings className="size-4" />, active: route.view === 'settings', go: () => navigate({ view: 'settings' }), badge: 0 },
+    // En ligne, pour l'administrateur seulement.
+    ...(me?.admin
+      ? [{ label: 'Administration', icon: <ShieldCheck className="size-4" />, active: route.view === 'admin', go: () => navigate({ view: 'admin' }), badge: 0 }]
+      : []),
   ]
 
   return (

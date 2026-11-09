@@ -191,6 +191,9 @@ test("un code serveur compte le quota par personne connectée, sans voir l'e-mai
   assert.equal((await as("alice@example.com")).status, 429);
   assert.equal((await as("bob@example.com")).status, 200);
   assert.equal((await (await as("alice@example.com", "/v1/verifier")).json()).reste_jour, 0);
-  assert.equal((await (await as("carla@example.com", "/v1/verifier")).json()).reste_jour, 1);
+  const carla = await (await as("carla@example.com", "/v1/verifier")).json();
+  assert.equal(carla.reste_jour, 1);
+  assert.equal(carla.depense_mois, 0.0056);
+  assert.equal(carla.budget_mois, 10);
   assert.ok(![...kv.data.values()].some((v) => v.includes("example.com")), "aucun e-mail gardé");
 });

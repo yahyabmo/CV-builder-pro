@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
 //   #/target         cibler une offre (#/target/<slug> : à partir de ce CV)
 //   #/settings       réglages de l'IA
 //   #/privacy        confidentialité des données (en ligne)
+//   #/admin          administration (en ligne, administrateur) ; #/admin/<e-mail> : une personne
 //   #/welcome        premier lancement (…/setup, …/import, …/review/<id>, …/manual)
 
 export type Route =
@@ -15,6 +16,7 @@ export type Route =
   | { view: 'library' }
   | { view: 'settings' }
   | { view: 'privacy' }
+  | { view: 'admin'; email?: string }
   | { view: 'cv'; slug: string }
   | { view: 'target'; source?: string }
   | { view: 'welcome'; step: 'home' | 'setup' | 'import' | 'manual' }
@@ -24,6 +26,17 @@ function parse(hash: string): Route | null {
   const path = hash.replace(/^#\/?/, '')
   if (path === 'cvs' || path === 'library' || path === 'settings' || path === 'privacy') return { view: path }
   if (path === 'target') return { view: 'target' }
+  if (path === 'admin') return { view: 'admin' }
+  const person = /^admin\/([^/]+)$/.exec(path)
+  if (person) {
+    let email = ''
+    try {
+      email = decodeURIComponent(person[1])
+    } catch {
+      /* adresse mal formée */
+    }
+    if (email.includes('@')) return { view: 'admin', email }
+  }
   if (path === 'welcome') return { view: 'welcome', step: 'home' }
   if (path === 'welcome/setup' || path === 'welcome/import' || path === 'welcome/manual')
     return { view: 'welcome', step: path.slice(8) as 'setup' | 'import' | 'manual' }
@@ -38,6 +51,7 @@ function parse(hash: string): Route | null {
 export function routeHash(route: Route): string {
   if (route.view === 'cv') return `#/cv/${route.slug}`
   if (route.view === 'target' && route.source) return `#/target/${route.source}`
+  if (route.view === 'admin' && route.email) return `#/admin/${encodeURIComponent(route.email)}`
   if (route.view === 'welcome') return route.step === 'review' ? `#/welcome/review/${route.id}` : route.step === 'home' ? '#/welcome' : `#/welcome/${route.step}`
   return `#/${route.view}`
 }

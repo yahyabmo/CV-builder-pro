@@ -12,7 +12,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
-from app import access, paths, settings
+from app import access, paths, people, settings
 from app.ai import llm
 from app.main import app
 
@@ -48,6 +48,12 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(settings, "SETUP_FILE", tmp_path / "local" / "setup.json")
     for name in settings.KEYS.values():
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CVB_ADMIN", "yahya@example.com")
+    monkeypatch.setattr(people, "_last_write", {})
+    for name in ("CF_API_TOKEN", "CF_ACCOUNT_ID", "CF_ACCESS_GROUP_ID"):
+        monkeypatch.delenv(name, raising=False)
+    for email in ("alice@example.com", "bob@example.com", "carla@example.com"):
+        people.invite(email)
     return data
 
 
@@ -87,6 +93,7 @@ def test_each_person_has_own_data(server: Path) -> None:
     assert client.get("/api/me", headers=alice).json() == {
         "mode": "serveur",
         "email": "alice@example.com",
+        "admin": False,
     }
     # Première visite : le CV fictif, dans le dossier de la personne.
     assert [cv["slug"] for cv in client.get("/api/cvs", headers=alice).json()] == ["base"]
@@ -102,7 +109,7 @@ def test_each_person_has_own_data(server: Path) -> None:
         "bob@example.com",
     ]
     # Rien d'écrit directement dans data/ : tout est sous users/.
-    assert sorted(p.name for p in server.iterdir()) == ["users"]
+    assert sorted(p.name for p in server.iterdir()) == ["acces.json", "users"]
 
 
 def test_cookie_works_too(server: Path) -> None:
@@ -121,7 +128,7 @@ def test_server_refuses_to_start_without_access(
 
 def test_local_mode_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CVB_MODE", raising=False)
-    assert TestClient(app).get("/api/me").json() == {"mode": "local", "email": None}
+    assert TestClient(app).get("/api/me").json() == {"mode": "local", "email": None, "admin": False}
     assert paths.user_root() == paths.DATA_DIR
 
 
@@ -222,3 +229,108 @@ def test_export_gives_only_my_data(server: Path) -> None:
     assert any(name.startswith("cv-builder-pro/rules/") for name in names)
     assert not any("bob" in name or "users" in name for name in names)
     assert client.get("/api/export").status_code == 401
+
+
+# L'administration, réservée à CVB_ADMIN.
+
+ADMIN = "yahya@example.com"
+
+
+def test_only_invited_people_get_in(server: Path) -> None:
+    client = TestClient(app)
+    stranger = client.get("/api/cvs", headers=as_("inconnu@example.com"))
+    assert stranger.status_code == 403
+    # L'administrateur entre sans figurer dans la liste.
+    assert client.get("/api/me", headers=as_(ADMIN)).json()["admin"] is True
+
+
+def test_admin_pages_are_for_the_admin_only(server: Path) -> None:
+    client = TestClient(app)
+    for url in ("/api/admin/people", "/api/admin/people/alice@example.com"):
+        assert client.get(url, headers=as_("alice@example.com")).status_code == 403
+    answer = client.post(
+        "/api/admin/people", headers=as_("alice@example.com"), json={"email": "x@example.com"}
+    )
+    assert answer.status_code == 403
+    assert "x@example.com" not in people.load()
+
+
+def test_admin_invites_removes_and_erases(server: Path) -> None:
+    client = TestClient(app)
+    admin = as_(ADMIN)
+    out = client.post("/api/admin/people", headers=admin, json={"email": " Dana@Example.com "})
+    assert out.status_code == 200
+    assert "dana@example.com" in [p["email"] for p in out.json()["people"]]
+    assert client.get("/api/cvs", headers=as_("dana@example.com")).status_code == 200
+
+    # Retirée : coupée tout de suite, données gardées.
+    assert client.delete("/api/admin/people/dana@example.com", headers=admin).status_code == 200
+    assert client.get("/api/cvs", headers=as_("dana@example.com")).status_code == 403
+    assert (server / "users" / "dana@example.com").is_dir()
+
+    # Réinvitée, puis retirée et effacée pour de bon.
+    client.post("/api/admin/people", headers=admin, json={"email": "dana@example.com"})
+    erase = client.delete("/api/admin/people/dana@example.com/data", headers=admin)
+    assert erase.status_code == 409
+    client.delete("/api/admin/people/dana@example.com", headers=admin)
+    assert (
+        client.delete("/api/admin/people/dana@example.com/data", headers=admin).status_code == 200
+    )
+    assert not (server / "users" / "dana@example.com").exists()
+    assert "dana@example.com" not in people.load()
+
+    assert client.delete(f"/api/admin/people/{ADMIN}", headers=admin).status_code == 409
+    bad = client.post("/api/admin/people", headers=admin, json={"email": "../../etc"})
+    assert bad.status_code == 422
+
+
+def test_admin_reads_a_person_without_changing_anything(server: Path) -> None:
+    client = TestClient(app)
+    alice = as_("alice@example.com")
+    client.put("/api/rules/lettre", headers=alice, json={"rules": ["Règle d'Alice"]})
+    before = sorted(str(p) for p in (server / "users" / "alice@example.com").rglob("*"))
+    admin = as_(ADMIN)
+    listing = client.get("/api/admin/people", headers=admin).json()
+    alice_row = next(p for p in listing["people"] if p["email"] == "alice@example.com")
+    assert alice_row["cvs"] == 1 and alice_row["applications"] == 0
+    assert alice_row["last_seen"] is not None
+    detail = client.get("/api/admin/people/alice@example.com", headers=admin).json()
+    assert [cv["slug"] for cv in detail["cvs"]] == ["base"]
+    zipped = client.get("/api/admin/people/alice@example.com/export", headers=admin)
+    assert zipped.status_code == 200 and zipped.content[:2] == b"PK"
+    after = sorted(str(p) for p in (server / "users" / "alice@example.com").rglob("*"))
+    assert before == after
+    # Les données de l'admin ne se mélangent pas à celles d'Alice.
+    assert client.get("/api/rules/lettre", headers=admin).json()["rules"] != ["Règle d'Alice"]
+
+
+def test_cloudflare_group_gets_the_active_list(
+    server: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CF_API_TOKEN", "jeton-essai")
+    monkeypatch.setenv("CF_ACCOUNT_ID", "compte")
+    monkeypatch.setenv("CF_ACCESS_GROUP_ID", "groupe")
+    sent: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer jeton-essai"
+        assert request.url.path == "/client/v4/accounts/compte/access/groups/groupe"
+        if request.method == "GET":
+            return httpx.Response(200, json={"result": {"name": "CV Builder Pro", "include": []}})
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"result": {}})
+
+    real = httpx.Client
+    monkeypatch.setattr(
+        people.httpx,
+        "Client",
+        lambda *a, **k: real(*a, transport=httpx.MockTransport(handler), **k),
+    )
+    client = TestClient(app)
+    client.delete("/api/admin/people/bob@example.com", headers=as_(ADMIN))
+    assert sent[-1]["name"] == "CV Builder Pro"
+    assert [r["email"]["email"] for r in sent[-1]["include"]] == [
+        "alice@example.com",
+        "carla@example.com",
+        ADMIN,
+    ]

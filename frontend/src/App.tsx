@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { AdminPage } from '@/components/admin/admin-page'
 import { ApplicationsPage } from '@/components/cvs/applications-page'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -108,6 +109,7 @@ export default function App() {
           {route.view === 'library' && <LibraryPage />}
           {route.view === 'settings' && <SettingsPage />}
           {route.view === 'privacy' && <PrivacyPage />}
+          {route.view === 'admin' && <AdminPage email={route.email} navigate={navigate} />}
           {route.view === 'target' && (
             <TargetPage key={route.source ?? ''} cvs={cvs} source={route.source} navigate={navigate} refresh={refresh} />
           )}

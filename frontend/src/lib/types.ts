@@ -377,6 +377,35 @@ export interface OnlineAI {
 export interface Me {
   mode: 'local' | 'serveur'
   email: string | null
+  /** En ligne : cette personne administre le service (CVB_ADMIN). */
+  admin: boolean
+}
+
+/** Administration : une personne invitée (ou l'administrateur). */
+export interface AdminPerson {
+  email: string
+  invited: string | null
+  removed: string | null
+  last_seen: string | null
+  admin: boolean
+  cvs: number | null
+  applications: number | null
+  due: number | null
+  ai_left: number | null
+  ai_quota: number | null
+}
+
+export interface AdminPeople {
+  people: AdminPerson[]
+  spent: number | null
+  budget: number | null
+  cloudflare: boolean
+  warning: string | null
+}
+
+export interface AdminPersonDetail {
+  email: string
+  cvs: CVSummary[]
 }
 
 export interface ConnectionTest {

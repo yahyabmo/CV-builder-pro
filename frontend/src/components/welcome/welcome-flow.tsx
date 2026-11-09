@@ -142,7 +142,7 @@ function Home({ navigate, refresh }: { navigate: (route: Route) => void; refresh
         <span className="flex items-center gap-2">
           <Lock className="size-3.5" />
           {me?.mode === 'serveur' ? (
-            'Tes CV restent dans ton espace : toi seul les vois.'
+            'Tes CV restent dans ton espace : les autres utilisateurs ne les voient jamais.'
           ) : (
             <>
               Tes CV restent sur cette machine, dans le dossier <code className="text-[12.5px]">data/</code>.

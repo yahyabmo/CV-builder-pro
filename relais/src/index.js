@@ -61,14 +61,17 @@ export async function handle(request, env, ctx) {
   const used = usage.jours?.[day]?.[who.id] || 0;
 
   if (url.pathname === "/v1/verifier") {
-    return json(200, {
+    const answer = {
       ok: true,
       nom: who.nom,
       reste_jour: Math.max(0, quota - used),
       quota_jour: quota,
       credit_epuise: usage.depense >= budget,
       modele: env.MODELE,
-    });
+    };
+    // La dépense du mois, pour la page d'administration de la version en ligne seulement.
+    if (who.serveur) Object.assign(answer, { depense_mois: usage.depense, budget_mois: budget });
+    return json(200, answer);
   }
   if (!/^\/v1beta\/models\/[A-Za-z0-9._-]+:generateContent$/.test(url.pathname)) {
     return error(404, "Adresse inconnue.", "ADRESSE");

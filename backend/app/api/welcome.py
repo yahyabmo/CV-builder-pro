@@ -19,7 +19,7 @@ from app.api.schemas import CompileOut
 from app.latex.compile import LatexNotInstalled, compile_tex
 from app.models.content import CVContent
 from app.models.meta import now
-from app.paths import DEMO_DIR
+from app.paths import DEMO_DIR, server_mode
 from app.services import cv_import, cv_style, library_import, photo
 from app.storage import cv_store, library_store
 
@@ -111,7 +111,9 @@ def _styled(import_id: str | None, content: CVContent, keep: list[str] | None):
 @router.get("")
 def state() -> WelcomeState:
     show = cv_store.load_meta(_base()).welcome
-    return WelcomeState(show=show, setup=show and not settings.setup_done())
+    # En ligne, rien à régler : ni modèle d'IA à choisir, ni machine à vérifier.
+    setup = show and not server_mode() and not settings.setup_done()
+    return WelcomeState(show=show, setup=setup)
 
 
 @router.post("/setup")

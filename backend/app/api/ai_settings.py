@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app import settings
 from app.ai import llm, quota, usage_log
+from app.paths import current_user, server_mode
 from app.settings import AISettings
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -26,6 +27,16 @@ class Usage(BaseModel):
     last: str | None
 
 
+class Online(BaseModel):
+    """En ligne : l'IA de Yahya, et ce qu'il reste à la personne connectée aujourd'hui."""
+
+    ok: bool
+    left: int | None = None
+    quota: int | None = None
+    exhausted: bool = False
+    message: str = ""
+
+
 class SettingsOut(BaseModel):
     ai: AISettings
     keys: dict[str, bool]
@@ -34,10 +45,22 @@ class SettingsOut(BaseModel):
     blocked: dict[str, str]
     # Le relais de Yahya a une adresse : le choix « Gemini de Yahya » est utilisable.
     relay_ready: bool
+    # Présent en mode serveur seulement.
+    online: Online | None = None
 
 
 def _out() -> SettingsOut:
     ai = settings.load()
+    if server_mode():
+        # La consommation et les modèles de la machine sont ceux de tout le serveur :
+        # rien de tout ça n'est montré aux personnes connectées.
+        return SettingsOut(
+            ai=ai,
+            keys={},
+            usage=Usage(month="", calls=0, input=0, output=0, cost=None, last=None),
+            blocked={},
+            relay_ready=True,
+        )
     return SettingsOut(
         ai=ai,
         keys={p: settings.has_key(p) for p in ("relais", "gemini", "mistral", "ollama", "demo")},
@@ -50,13 +73,42 @@ def _out() -> SettingsOut:
     )
 
 
+async def _online() -> Online:
+    """Le reste du jour de la personne connectée, demandé au relais (sans dépense)."""
+    ai = settings.load()
+    code = settings.secret("relais")
+    if not code or not ai.relais_url:
+        return Online(ok=False, message="L'IA n'est pas encore prête sur ce serveur.")
+    try:
+        answer = await llm.verify_code(ai.relais_url, code, current_user())
+    except llm.LLMError as error:
+        return Online(ok=False, message=error.message)
+    left, total = answer.get("reste_jour"), answer.get("quota_jour")
+    return Online(
+        ok=True,
+        left=left if isinstance(left, int) else None,
+        quota=total if isinstance(total, int) else None,
+        exhausted=bool(answer.get("credit_epuise")),
+    )
+
+
+def _locked() -> None:
+    """En ligne, l'IA est la même pour tout le monde : personne ne la change d'ici."""
+    if server_mode():
+        raise HTTPException(403, "En ligne, l'IA est réglée par Yahya pour tout le monde.")
+
+
 @router.get("")
-def get_settings() -> SettingsOut:
-    return _out()
+async def get_settings() -> SettingsOut:
+    out = _out()
+    if server_mode():
+        out.online = await _online()
+    return out
 
 
 @router.put("")
 def put_settings(ai: AISettings) -> SettingsOut:
+    _locked()
     if ai.provider == "fake":
         raise HTTPException(422, "Le faux modèle ne sert qu'aux tests.")
     settings.save(ai)
@@ -124,6 +176,7 @@ async def save_key(provider: str, body: KeyIn) -> KeyOut:
     Un quota épuisé prouve que la clé est bonne : elle est enregistrée quand même.
     Une clé refusée, ou un fournisseur injoignable : rien n'est écrit.
     """
+    _locked()
     name = _key_provider(provider)
     key = body.key.strip()
     if not settings.KEY_PATTERN.fullmatch(key):
@@ -206,6 +259,7 @@ async def _save_code(code: str) -> KeyOut:
 
 @router.delete("/keys/{provider}")
 def delete_key(provider: str) -> SettingsOut:
+    _locked()
     name = _key_provider(provider)
     if settings.key_from_environment(name):
         raise HTTPException(

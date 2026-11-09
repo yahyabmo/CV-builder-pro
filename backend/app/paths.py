@@ -31,6 +31,11 @@ def server_mode() -> bool:
     return os.environ.get("CVB_MODE", "").strip().lower() == "serveur"
 
 
+def current_user() -> str | None:
+    """L'e-mail de la personne connectée (mode serveur, pendant une requête), sinon None."""
+    return _user.get()
+
+
 def user_root() -> Path:
     user = _user.get()
     return DATA_DIR / "users" / user if user else DATA_DIR

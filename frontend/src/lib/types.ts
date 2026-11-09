@@ -361,6 +361,22 @@ export interface SettingsInfo {
   blocked: Record<string, string>
   /** Le relais de Yahya a une adresse : « Gemini de Yahya » est utilisable. */
   relay_ready: boolean
+  /** En ligne seulement : ce qu'il reste aujourd'hui à la personne connectée. */
+  online?: OnlineAI | null
+}
+
+export interface OnlineAI {
+  ok: boolean
+  left: number | null
+  quota: number | null
+  exhausted: boolean
+  message: string
+}
+
+/** Qui utilise l'appli : en ligne, la personne connectée ; en local, personne en particulier. */
+export interface Me {
+  mode: 'local' | 'serveur'
+  email: string | null
 }
 
 export interface ConnectionTest {

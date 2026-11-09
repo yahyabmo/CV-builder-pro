@@ -10,8 +10,13 @@
  *   POST /v1/verifier                              le code est-il valable ? (sans appel à Google)
  *   POST /v1beta/models/<modèle>:generateContent   une demande au modèle (le modèle est imposé)
  *
+ * Un code « serveur » (serveur: true) est celui de la version en ligne : plusieurs
+ * personnes le partagent, et l'appli envoie avec chaque demande l'en-tête
+ * X-CVB-Utilisateur, l'empreinte SHA-256 de l'e-mail de la personne connectée. Le
+ * quota du jour compte alors par personne ; le relais ne voit jamais l'e-mail.
+ *
  * Stockage (KV, liaison CODES) :
- *   code:<sha256 du code>  {nom, cree}       un code d'accès, rangé haché
+ *   code:<sha256 du code>  {nom, cree, serveur?}  un code d'accès, rangé haché
  *   nom:<nom>              <sha256>          pour retirer un code par son nom
  *   usage:<AAAA-MM>        {depense, jours: {<AAAA-MM-JJ>: {<id>: demandes}}}
  */
@@ -40,6 +45,13 @@ export async function handle(request, env, ctx) {
       "Code d'accès inconnu ou retiré. Demande un code à Yahya, ou utilise ta propre clé Gemini.",
       "CODE",
     );
+  }
+  if (who.serveur) {
+    const user = (request.headers.get("x-cvb-utilisateur") || "").trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(user)) {
+      return error(400, "Demande sans personne connectée.", "UTILISATEUR");
+    }
+    who.id = (await sha256(`${who.id}:${user}`)).slice(0, 16);
   }
   const day = today(env);
   const month = day.slice(0, 7);
@@ -120,14 +132,14 @@ export async function handle(request, env, ctx) {
   });
 }
 
-/** Le code d'accès de l'en-tête Authorization, s'il est connu : {id, nom}. */
+/** Le code d'accès de l'en-tête Authorization, s'il est connu : {id, nom, serveur}. */
 async function identify(request, env) {
   const header = request.headers.get("authorization") || "";
   const code = header.replace(/^Bearer\s+/i, "").trim();
   if (code.length < 10 || code.length > 200) return null;
   const hash = await sha256(code);
   const found = await env.CODES.get(`code:${hash}`, "json");
-  return found ? { id: hash.slice(0, 16), nom: found.nom || "" } : null;
+  return found ? { id: hash.slice(0, 16), nom: found.nom || "", serveur: found.serveur === true } : null;
 }
 
 export async function sha256(text) {

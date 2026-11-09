@@ -14,6 +14,7 @@ Les clés ne sont jamais écrites dans un journal ni dans un message d'erreur.
 """
 
 import asyncio
+import hashlib
 import json
 import re
 import time
@@ -28,7 +29,7 @@ from pydantic import BaseModel, ValidationError
 
 from app import settings as settings_module
 from app.ai import quota
-from app.paths import DEMO_DIR, LOCAL_DIR
+from app.paths import DEMO_DIR, LOCAL_DIR, current_user, server_mode
 from app.settings import AISettings
 
 Notify = Callable[[str], Awaitable[None]]
@@ -253,15 +254,19 @@ class RelayProvider(GeminiProvider):
     name = "relais"
     label = "Le relais de Yahya"
 
-    def __init__(self, url: str, code: str, model: str, temperature: float) -> None:
+    def __init__(
+        self, url: str, code: str, model: str, temperature: float, user: str | None = None
+    ) -> None:
         super().__init__(code, [model], temperature)
         self.base = url.rstrip("/")
+        # En ligne : l'e-mail de la personne connectée, pour son quota du jour.
+        self.user = user
 
     def _endpoint(self, model: str) -> str:
         return f"{self.base}/v1beta/models/{model}:generateContent"
 
     def _headers(self) -> dict[str, str]:
-        return {"authorization": f"Bearer {self._key}"}
+        return relay_headers(self._key, self.user)
 
     def _error(self, response: httpx.Response, model: str) -> LLMError:
         return relay_error(response, model)
@@ -271,6 +276,14 @@ class RelayProvider(GeminiProvider):
     ) -> Completion:
         # Un seul modèle, celui du relais : pas de repli d'un modèle à l'autre.
         return await self._call(self.model, system, user, schema)
+
+
+def relay_headers(code: str, user: str | None = None) -> dict[str, str]:
+    """Le code d'accès, et en ligne l'empreinte de l'e-mail : le relais ne voit pas l'adresse."""
+    headers = {"authorization": f"Bearer {code}"}
+    if user:
+        headers["x-cvb-utilisateur"] = hashlib.sha256(user.encode()).hexdigest()
+    return headers
 
 
 def relay_error(response: httpx.Response, model: str = "") -> LLMError:
@@ -292,14 +305,14 @@ def relay_error(response: httpx.Response, model: str = "") -> LLMError:
     return _http_error("Gemini (relais de Yahya)", response, model)
 
 
-async def verify_code(url: str, code: str) -> dict[str, Any]:
+async def verify_code(url: str, code: str, user: str | None = None) -> dict[str, Any]:
     """Le relais reconnaît-il ce code ? Sans appel au modèle, donc sans dépense."""
     if not url:
         raise LLMError("Le relais de Yahya n'est pas encore en service")
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             response = await client.post(
-                f"{url.rstrip('/')}/v1/verifier", headers={"authorization": f"Bearer {code}"}
+                f"{url.rstrip('/')}/v1/verifier", headers=relay_headers(code, user)
             )
     except httpx.HTTPError as error:
         raise LLMError(
@@ -440,6 +453,13 @@ class DemoProvider(FakeProvider):
 
 def provider_from_settings(ai: AISettings | None = None) -> LLMProvider:
     ai = ai or settings_module.load()
+    if server_mode():
+        # En ligne, toujours le relais de Yahya, au nom de la personne connectée.
+        code = settings_module.secret("relais")
+        user = current_user()
+        if not code or not ai.relais_url or not user:
+            raise LLMError("L'IA n'est pas encore prête sur ce serveur : préviens Yahya.")
+        return RelayProvider(ai.relais_url, code, ai.relais_model, ai.temperature, user)
     if ai.provider == "relais":
         code = settings_module.secret("relais")
         if not code:

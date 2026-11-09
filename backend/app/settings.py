@@ -21,7 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.paths import LOCAL_DIR, ROOT
+from app.paths import LOCAL_DIR, ROOT, server_mode
 
 ENV_FILE = Path(os.environ.get("CVB_ENV") or ROOT / ".env")
 SETTINGS_FILE = LOCAL_DIR / "settings.json"
@@ -103,6 +103,8 @@ def load() -> AISettings:
         data["gemini_fallbacks"] = [m.strip() for m in env["GEMINI_FALLBACK_MODELS"].split(",")]
     if SETTINGS_FILE.exists():
         data.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
+    if server_mode():
+        data["provider"] = "relais"
     return AISettings.model_validate(data)
 
 

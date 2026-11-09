@@ -1,6 +1,7 @@
 // Les codes d'accès au relais : les créer, les retirer, les lister, voir la dépense du mois.
 //
 //   npm run code -- ajouter "Karim"   crée un code pour Karim et l'affiche (à lui transmettre)
+//   npm run code -- serveur "En ligne" le code de la version en ligne (quota par personne connectée)
 //   npm run code -- retirer "Karim"   lui coupe l'accès
 //   npm run code -- liste             les personnes qui ont un code
 //   npm run code -- usage             la dépense du mois et les demandes de chacun aujourd'hui
@@ -45,17 +46,23 @@ function today() {
 
 function main([action, ...rest]) {
   const name = rest.join(" ").trim();
-  if (action === "ajouter" && name) {
+  if ((action === "ajouter" || action === "serveur") && name) {
     if (get(nameKey(name))) {
       console.error(`« ${name} » a déjà un code. Retire-le d'abord pour en créer un nouveau.`);
       process.exit(1);
     }
     const code = newCode();
     const hash = sha256(code);
-    put(`code:${hash}`, JSON.stringify({ nom: name, cree: new Date().toISOString() }));
+    const entry = { nom: name, cree: new Date().toISOString() };
+    if (action === "serveur") entry.serveur = true;
+    put(`code:${hash}`, JSON.stringify(entry));
     put(nameKey(name), hash);
     console.log(`\nCode d'accès de ${name} (il ne sera plus affiché) :\n\n  ${code}\n`);
-    console.log("Dans l'appli : Réglages › Gemini de Yahya, puis colle ce code.");
+    console.log(
+      action === "serveur"
+        ? "Sur le serveur : RELAIS_CODE=<ce code> dans son .env."
+        : "Dans l'appli : Réglages › Gemini de Yahya, puis colle ce code.",
+    );
   } else if (action === "retirer" && name) {
     const hash = get(nameKey(name));
     if (!hash) {

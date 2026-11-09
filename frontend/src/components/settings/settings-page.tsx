@@ -12,9 +12,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Slider } from '@/components/ui/slider'
 import { useMachine } from '@/hooks/use-machine'
+import { useMe } from '@/hooks/use-me'
 import { api } from '@/lib/api'
 import { keyed } from '@/lib/keys'
-import type { AISettings, ConnectionTest, KeyProvider, Provider, SettingsInfo } from '@/lib/types'
+import type { AISettings, ConnectionTest, KeyProvider, OnlineAI, Provider, SettingsInfo } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 import { RulesEditor } from './rules-editor'
@@ -43,6 +44,103 @@ const PROVIDERS: { id: Provider; name: string; text: string; other?: boolean }[]
 const time = (iso: string) => new Date(iso).toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' })
 
 export function SettingsPage() {
+  const me = useMe()
+  if (!me) {
+    return (
+      <Page>
+        <Skeleton className="h-40 w-full rounded-xl" />
+      </Page>
+    )
+  }
+  return me.mode === 'serveur' ? <OnlineSettings /> : <LocalSettings />
+}
+
+/** En ligne : rien à installer ni à régler pour l'IA. Restent les règles de la lettre. */
+function OnlineSettings() {
+  const [online, setOnline] = useState<OnlineAI | null | undefined>(undefined)
+  useEffect(() => {
+    api.getSettings().then(
+      (info) => setOnline(info.online ?? null),
+      () => setOnline(null),
+    )
+  }, [])
+
+  const used = online?.ok && online.quota ? online.quota - (online.left ?? 0) : null
+  return (
+    <Page>
+      <p className="text-[13px] text-muted-foreground">En ligne, il n'y a rien à installer ni de clé à coller.</p>
+
+      <section className="flex flex-col gap-3 rounded-xl border bg-card surface p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-[14px] font-semibold">Intelligence artificielle</h2>
+          {online !== undefined && (
+            <span
+              className={cn(
+                'rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold',
+                online?.ok ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning',
+              )}
+            >
+              {online?.ok ? 'Active' : 'Indisponible'}
+            </span>
+          )}
+        </div>
+        <p className="text-[13px] text-muted-foreground">Fournie par Yahya (Gemini). Aucune clé à gérer de ton côté.</p>
+        {online === undefined && <Skeleton className="h-8 w-full" />}
+        {online && !online.ok && <p className="text-[12.5px] text-warning">{online.message || 'Réessaie dans un moment.'}</p>}
+        {online?.exhausted && (
+          <p className="text-[12.5px] text-warning">Le crédit offert ce mois-ci est épuisé. Il revient le 1er du mois.</p>
+        )}
+        {online?.ok && online.quota != null && used != null && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between text-[13px]">
+              <span>Aujourd'hui</span>
+              <span className="font-semibold tabular-nums">
+                {used} / {online.quota} demandes
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label="Demandes utilisées aujourd'hui"
+              aria-valuemin={0}
+              aria-valuemax={online.quota}
+              aria-valuenow={used}
+              className="h-2 overflow-hidden rounded-full bg-muted"
+            >
+              <div className="h-full bg-primary" style={{ width: `${Math.min(100, (used / online.quota) * 100)}%` }} />
+            </div>
+            <p className="text-[12px] text-muted-foreground">
+              Le compteur repart à zéro à minuit (heure de Paris). Un CV ciblé en utilise 3, une lettre 1.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2 rounded-xl border bg-card surface p-4">
+        <h2 className="text-[14px] font-semibold">Compilation des CV</h2>
+        <p className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <CheckCircle2 className="size-4 shrink-0 text-success" />
+          Le PDF est fabriqué sur le serveur : rien à installer sur ton ordinateur.
+        </p>
+      </section>
+
+      <RulesEditor
+        kind="lettre"
+        title="Lettre de motivation : tes règles"
+        description="Données à l'IA à chaque lettre (onglet Lettre d'un CV ciblé)."
+      />
+
+      <RulesEditor
+        kind="tournures"
+        title="Lettre de motivation : tournures à bannir"
+        description="Interdites à l'IA, et signalées dans la lettre si elles y apparaissent (même après tes retouches)."
+        addLabel="Ajouter une tournure"
+        placeholder="ex. je me permets"
+      />
+    </Page>
+  )
+}
+
+function LocalSettings() {
   const [info, setInfo] = useState<SettingsInfo | null>(null)
   const [form, setForm] = useState<AISettings | null>(null)
   const [fallbacks, setFallbacks] = useState('')

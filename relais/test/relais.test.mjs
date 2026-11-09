@@ -1,5 +1,6 @@
 // Essais du relais, sans Cloudflare ni Google : un faux stockage et un faux Google.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 
 import { newCode } from "../scripts/codes.mjs";
@@ -168,4 +169,28 @@ test("un code se lit et se recopie facilement, et l'appli l'accepte", () => {
   assert.match(code, /^cvb-[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
   assert.match(code, /^[A-Za-z0-9._-]{10,200}$/);
   assert.notEqual(newCode(), code);
+});
+
+test("un code serveur compte le quota par personne connectée, sans voir l'e-mail", async (t) => {
+  const { env, kv } = await setup({ quota: 1 });
+  const server = newCode();
+  await kv.put(`code:${await sha256(server)}`, JSON.stringify({ nom: "En ligne", serveur: true }));
+  const calls = fakeGoogle(t);
+  const as = (email, path = GENERATE, body = BODY) => {
+    const req = request(path, server, body);
+    if (email) req.headers.set("x-cvb-utilisateur", createHash("sha256").update(email).digest("hex"));
+    return handle(req, env);
+  };
+  // Sans personne connectée : refusé, sans appel à Google.
+  const anonymous = await as(undefined);
+  assert.equal(anonymous.status, 400);
+  assert.equal((await anonymous.json()).error.status, "UTILISATEUR");
+  assert.equal(calls.length, 0);
+
+  assert.equal((await as("alice@example.com")).status, 200);
+  assert.equal((await as("alice@example.com")).status, 429);
+  assert.equal((await as("bob@example.com")).status, 200);
+  assert.equal((await (await as("alice@example.com", "/v1/verifier")).json()).reste_jour, 0);
+  assert.equal((await (await as("carla@example.com", "/v1/verifier")).json()).reste_jour, 1);
+  assert.ok(![...kv.data.values()].some((v) => v.includes("example.com")), "aucun e-mail gardé");
 });

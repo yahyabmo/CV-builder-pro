@@ -2,6 +2,7 @@ import { BookMarked, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Setti
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useMe } from '@/hooks/use-me'
 import type { Route } from '@/hooks/use-route'
 import { useTheme, type ThemeChoice } from '@/hooks/use-theme'
 import { dayLabel } from '@/lib/applications'
@@ -9,6 +10,8 @@ import { api } from '@/lib/api'
 import type { CVSummary } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { openPalette } from '@/lib/workspace-commands'
+
+import { Account } from './account'
 
 interface SidebarProps {
   cvs: CVSummary[] | null
@@ -20,6 +23,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ cvs, route, navigate, collapsed, onToggle }: SidebarProps) {
+  const me = useMe()
   const base = cvs?.find((cv) => cv.meta.kind === 'base') ?? null
   const due = cvs?.filter((cv) => cv.due).length ?? 0
   const onBase = route.view === 'cv' && base !== null && route.slug === base.slug
@@ -131,6 +135,12 @@ export function Sidebar({ cvs, route, navigate, collapsed, onToggle }: SidebarPr
           </div>
         )}
       </ScrollArea>
+
+      {me?.mode === 'serveur' && me.email && (
+        <div className={cn('flex shrink-0 border-t p-2', collapsed && 'justify-center')}>
+          <Account email={me.email} collapsed={collapsed} refreshKey={JSON.stringify(route)} />
+        </div>
+      )}
 
       <div className={cn('flex shrink-0 gap-1 border-t p-2', collapsed ? 'flex-col items-center' : 'items-center')}>
         <ThemeSwitch collapsed={collapsed} />

@@ -2,6 +2,7 @@ import { Check, ChevronLeft, Info, Lock, PencilLine, PlayCircle, Upload } from '
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { useMe } from '@/hooks/use-me'
 import type { Route } from '@/hooks/use-route'
 import { api } from '@/lib/api'
 import type { SettingsInfo } from '@/lib/types'
@@ -76,6 +77,7 @@ export function FlowHeader({ back, current, aside, title }: { back: () => void; 
 
 function Home({ navigate, refresh }: { navigate: (route: Route) => void; refresh: () => Promise<void> }) {
   const [settings, setSettings] = useState<SettingsInfo | null>(null)
+  const me = useMe()
   useEffect(() => {
     api.getSettings().then(setSettings, () => setSettings(null))
   }, [])
@@ -138,7 +140,14 @@ function Home({ navigate, refresh }: { navigate: (route: Route) => void; refresh
 
       <div className="flex flex-wrap gap-x-7 gap-y-2.5 text-[13px] text-muted-foreground">
         <span className="flex items-center gap-2">
-          <Lock className="size-3.5" /> Tes CV restent sur cette machine, dans le dossier <code className="text-[12.5px]">data/</code>.
+          <Lock className="size-3.5" />
+          {me?.mode === 'serveur' ? (
+            'Tes CV restent dans ton espace : toi seul les vois.'
+          ) : (
+            <>
+              Tes CV restent sur cette machine, dans le dossier <code className="text-[12.5px]">data/</code>.
+            </>
+          )}
         </span>
         {missingKey && (
           <span className="flex items-center gap-2">

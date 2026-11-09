@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useMe } from '@/hooks/use-me'
 import { api } from '@/lib/api'
 import { shortLabel } from '@/lib/format'
 import type { CVSummary } from '@/lib/types'
@@ -127,6 +128,7 @@ export function RenameDialog({ cv, onClose, onDone }: { cv: CVSummary | null; on
 }
 
 export function DeleteDialog({ cv, onClose, onDone }: { cv: CVSummary | null; onClose: () => void; onDone: () => Promise<void> }) {
+  const me = useMe()
   const remove = async () => {
     if (!cv) return
     try {
@@ -143,8 +145,14 @@ export function DeleteDialog({ cv, onClose, onDone }: { cv: CVSummary | null; on
         <AlertDialogHeader>
           <AlertDialogTitle>Supprimer « {cv?.meta.name} » ?</AlertDialogTitle>
           <AlertDialogDescription>
-            Le CV, sa lettre et le suivi de la candidature partent dans <code>data/corbeille/</code> : ils disparaissent de
-            l'application, mais restent récupérables à la main.
+            {me?.mode === 'serveur' ? (
+              <>Le CV, sa lettre et le suivi de la candidature disparaissent de l'application. Pour en récupérer un, demande à Yahya.</>
+            ) : (
+              <>
+                Le CV, sa lettre et le suivi de la candidature partent dans <code>data/corbeille/</code> : ils disparaissent de
+                l'application, mais restent récupérables à la main.
+              </>
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

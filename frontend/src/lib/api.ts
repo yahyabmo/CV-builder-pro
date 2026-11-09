@@ -41,6 +41,7 @@ import type {
   TargetEvent,
   TargetRequest,
   Theme,
+  Me,
 } from './types'
 
 export class ApiError extends Error {
@@ -81,6 +82,8 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
     } catch {
       /* réponse sans JSON */
     }
+    // En ligne, la connexion Cloudflare a expiré : recharger la page ramène à la connexion.
+    if (response.status === 401) throw new ApiError(401, 'Ta connexion a expiré : recharge la page pour te reconnecter.')
     throw new ApiError(response.status, readable(detail))
   }
   return response
@@ -225,6 +228,7 @@ export const api = {
     }),
   getOffer: (slug: string) => request<OfferInfo>(`/api/target/offer/${slug}`),
   getSettings: () => request<SettingsInfo>('/api/settings'),
+  me: () => request<Me>('/api/me'),
   demoOffer: () => request<{ text: string }>('/api/target/demo-offer'),
   welcome: () => request<WelcomeState>('/api/welcome'),
   dismissWelcome: () => request<WelcomeState>('/api/welcome/dismiss', { method: 'POST' }),

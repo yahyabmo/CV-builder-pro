@@ -6,9 +6,12 @@ JavaScript. Dans ces cas, ``OfferUnavailable`` dit clairement pourquoi et
 invite à coller le texte de l'offre.
 """
 
+import asyncio
+import ipaddress
 import re
+import socket
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 import trafilatura
@@ -33,6 +36,63 @@ _WALLS = re.compile(
 
 class OfferUnavailable(Exception):
     pass
+
+
+# Une page d'offre fait quelques centaines de Ko ; au-delà, ce n'est pas une offre.
+MAX_BYTES = 5 * 1024 * 1024
+MAX_REDIRECTS = 5
+
+
+async def _public(url: str) -> None:
+    """Refuse une adresse qui mène au serveur lui-même ou à un réseau privé.
+
+    En ligne, l'appli lit les pages depuis le serveur : sans cette garde, une « offre »
+    à http://127.0.0.1:8000 ou http://169.254.169.254 lirait ce qui n'est pas public.
+    Chaque redirection repasse par ici.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise OfferUnavailable("Adresse invalide : elle doit commencer par https://")
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(
+            parsed.hostname,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except OSError:
+        raise OfferUnavailable(f"Adresse introuvable : {parsed.hostname}.") from None
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+        if not address.is_global or address.is_multicast:
+            raise OfferUnavailable("Cette adresse n'est pas une page publique.")
+
+
+async def _get(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    """La page, en suivant les redirections une à une (chacune vérifiée), taille limitée."""
+    for _ in range(MAX_REDIRECTS + 1):
+        await _public(url)
+        async with client.stream("GET", url) as response:
+            if response.is_redirect and "location" in response.headers:
+                url = urljoin(url, response.headers["location"])
+                continue
+            body = b""
+            async for chunk in response.aiter_bytes():
+                body += chunk
+                if len(body) > MAX_BYTES:
+                    raise OfferUnavailable("La page est trop lourde pour être une offre.")
+            # Corps déjà décompressé : sans ces en-têtes, httpx ne le décode pas une 2e fois.
+            headers = {
+                k: v
+                for k, v in response.headers.items()
+                if k.lower() not in ("content-encoding", "content-length", "transfer-encoding")
+            }
+            return httpx.Response(
+                response.status_code,
+                headers=headers,
+                content=body,
+                request=response.request,
+            )
+    raise OfferUnavailable("Trop de redirections.")
 
 
 @dataclass
@@ -65,9 +125,9 @@ async def from_url(url: str) -> Offer:
     paste = " Copie le texte de l'offre sur la page et colle-le ici."
     try:
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(20, connect=10), follow_redirects=True, headers=HEADERS
+            timeout=httpx.Timeout(20, connect=10), follow_redirects=False, headers=HEADERS
         ) as client:
-            response = await client.get(url.strip())
+            response = await _get(client, url.strip())
     except httpx.TimeoutException:
         raise OfferUnavailable(f"{site} ne répond pas." + paste) from None
     except httpx.HTTPError:

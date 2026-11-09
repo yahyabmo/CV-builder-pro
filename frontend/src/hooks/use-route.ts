@@ -7,12 +7,14 @@ import { useCallback, useEffect, useState } from 'react'
 //   #/cv/<slug>      un CV ouvert dans l'éditeur
 //   #/target         cibler une offre (#/target/<slug> : à partir de ce CV)
 //   #/settings       réglages de l'IA
+//   #/privacy        confidentialité des données (en ligne)
 //   #/welcome        premier lancement (…/setup, …/import, …/review/<id>, …/manual)
 
 export type Route =
   | { view: 'cvs' }
   | { view: 'library' }
   | { view: 'settings' }
+  | { view: 'privacy' }
   | { view: 'cv'; slug: string }
   | { view: 'target'; source?: string }
   | { view: 'welcome'; step: 'home' | 'setup' | 'import' | 'manual' }
@@ -20,7 +22,7 @@ export type Route =
 
 function parse(hash: string): Route | null {
   const path = hash.replace(/^#\/?/, '')
-  if (path === 'cvs' || path === 'library' || path === 'settings') return { view: path }
+  if (path === 'cvs' || path === 'library' || path === 'settings' || path === 'privacy') return { view: path }
   if (path === 'target') return { view: 'target' }
   if (path === 'welcome') return { view: 'welcome', step: 'home' }
   if (path === 'welcome/setup' || path === 'welcome/import' || path === 'welcome/manual')

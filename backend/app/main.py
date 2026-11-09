@@ -22,6 +22,7 @@ from app.api import (
     assets,
     ats,
     cvs,
+    export,
     letters,
     library,
     project_ideas,
@@ -68,6 +69,7 @@ app.include_router(letters.router)
 app.include_router(welcome.router)
 app.include_router(project_ideas.router)
 app.include_router(system.router)
+app.include_router(export.router)
 
 
 @app.get("/api/health")

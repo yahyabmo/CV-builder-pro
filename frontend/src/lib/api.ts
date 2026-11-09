@@ -229,6 +229,7 @@ export const api = {
   getOffer: (slug: string) => request<OfferInfo>(`/api/target/offer/${slug}`),
   getSettings: () => request<SettingsInfo>('/api/settings'),
   me: () => request<Me>('/api/me'),
+  exportUrl: '/api/export',
   demoOffer: () => request<{ text: string }>('/api/target/demo-offer'),
   welcome: () => request<WelcomeState>('/api/welcome'),
   dismissWelcome: () => request<WelcomeState>('/api/welcome/dismiss', { method: 'POST' }),

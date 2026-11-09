@@ -18,7 +18,14 @@ function quotaLine(online: OnlineAI | null | undefined): string {
 }
 
 /** En ligne, en bas du menu : qui est connecté, son reste d'IA du jour, la déconnexion. */
-export function Account({ email, collapsed, refreshKey }: { email: string; collapsed: boolean; refreshKey: string }) {
+interface AccountProps {
+  email: string
+  collapsed: boolean
+  refreshKey: string
+  openPrivacy: () => void
+}
+
+export function Account({ email, collapsed, refreshKey, openPrivacy }: AccountProps) {
   const [online, setOnline] = useState<OnlineAI | null>(null)
 
   // Relu à chaque changement de page : un ciblage vient peut-être d'utiliser des demandes.
@@ -83,6 +90,9 @@ export function Account({ email, collapsed, refreshKey }: { email: string; colla
       >
         <LogOut className="size-3.5" /> Se déconnecter
       </a>
+      <button type="button" onClick={openPrivacy} className="self-start text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+        Confidentialité de tes données
+      </button>
     </div>
   )
 }

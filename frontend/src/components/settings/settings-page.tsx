@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, CircleAlert, Loader2, Lock, PlugZap, Save } from 'lucide-react'
+import { CheckCircle2, ChevronDown, CircleAlert, Download, Loader2, Lock, PlugZap, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -113,6 +113,21 @@ function OnlineSettings() {
             </p>
           </div>
         )}
+      </section>
+
+      <section className="flex flex-col gap-2 rounded-xl border bg-card surface p-4">
+        <h2 className="text-[14px] font-semibold">Tes données</h2>
+        <p className="text-[13px] text-muted-foreground">Télécharge tout dans un zip : CV, lettres, bibliothèque, thèmes et règles.</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <a href={api.exportUrl} download>
+              <Download className="size-3.5" /> Tout télécharger
+            </a>
+          </Button>
+          <a href="#/privacy" className="text-[12.5px] font-medium text-primary underline-offset-2 hover:underline">
+            Confidentialité et suppression du compte
+          </a>
+        </div>
       </section>
 
       <section className="flex flex-col gap-2 rounded-xl border bg-card surface p-4">

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useMe } from '@/hooks/use-me'
 import { api } from '@/lib/api'
 import type { Library, LibraryExperience, LibraryProject, LibrarySkill, ProjectDraft, SkillLevel } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -91,6 +92,7 @@ function useLibrary() {
 
 export function LibraryPage() {
   const { library, saving, change, replace, settle } = useLibrary()
+  const me = useMe()
   const [filling, setFilling] = useState(false)
 
   const fill = async () => {
@@ -124,7 +126,9 @@ export function LibraryPage() {
         {saving && <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Enregistrement" />}
         {proposals > 0 && <Badge variant="secondary" className="h-5 text-[11px] font-normal">{proposals} à valider</Badge>}
         <Button size="sm" className="ml-auto h-8 gap-1.5 text-[12px]" disabled={filling || !library} onClick={() => void fill()}>
-          {filling ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />} Remplir depuis mon CV et GitHub
+          {filling ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+          {/* En ligne, GitHub n'est pas lu : le compte de la machine serait celui de Yahya. */}
+          {me?.mode === 'serveur' ? 'Remplir depuis mon CV' : 'Remplir depuis mon CV et GitHub'}
         </Button>
       </header>
       <Tabs defaultValue="skills" className="flex min-h-0 flex-1 flex-col gap-0">
@@ -329,7 +333,7 @@ function Skills({ library, change, replace, settle }: SkillsProps) {
           )}
         </SectionTitle>
         {validated.length === 0 ? (
-          <Empty text="Aucune compétence. Clique « Remplir depuis mon CV et GitHub », ou ajoute-les ci-dessus." />
+          <Empty text="Aucune compétence. Clique « Remplir depuis mon CV… », ou ajoute-les ci-dessus." />
         ) : shown.length === 0 ? (
           <p className="text-[12.5px] text-muted-foreground">Aucune compétence ne correspond.</p>
         ) : (
@@ -454,7 +458,7 @@ function Experiences({ library, change }: { library: Library; change: Change }) 
       <SectionTitle title="Mes expériences" count={library.experiences.length}>
         <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[12px]" onClick={add}><Plus className="size-3.5" /> Expérience</Button>
       </SectionTitle>
-      {library.experiences.length === 0 && <Empty text="Aucune expérience. Clique « Remplir depuis mon CV et GitHub » pour reprendre celles de ton CV." />}
+      {library.experiences.length === 0 && <Empty text="Aucune expérience. Clique « Remplir depuis mon CV… » pour reprendre celles de ton CV." />}
       {library.experiences.map((experience) => (
         <article key={experience.id} className="flex flex-col gap-3 rounded-xl border bg-card surface p-3.5">
           <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
@@ -550,7 +554,7 @@ function Projects({ library, change }: { library: Library; change: Change }) {
           <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[12px]" onClick={add}><Plus className="size-3.5" /> Projet</Button>
         </SectionTitle>
         {validated.length === 0 ? (
-          <Empty text="Aucun projet validé. Clique « Remplir depuis mon CV et GitHub », ou ajoute-en un." />
+          <Empty text="Aucun projet validé. Clique « Remplir depuis mon CV… », ou ajoute-en un." />
         ) : (
           <div className="flex flex-col gap-2">
             {validated.map((project) => (

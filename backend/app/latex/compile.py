@@ -5,15 +5,25 @@ est copié à côté, sous le nom ``cv.pdf``. Une erreur LaTeX est rendue en
 « ligne + message lisible », jamais en log brut.
 """
 
+import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 BUILD = "build"
 PDF = "cv.pdf"
+
+# Le .tex se modifie dans l'appli (onglet LaTeX) : en ligne, n'importe qui en écrit. LaTeX
+# n'y lit (\input, \openin) ni n'y écrit que dans le dossier du CV et ses sous-dossiers,
+# jamais un fichier caché ni un chemin qui remonte (« paranoïaque » pour kpathsea).
+# Compilations simultanées au plus : en ligne, dix personnes qui compilent en même temps ne
+# font pas tomber le serveur ; les suivantes attendent leur tour.
+_SLOTS = threading.BoundedSemaphore(int(os.environ.get("CVB_COMPILES", "3")))
+SAFE_ENV = {**os.environ, "openin_any": "p", "openout_any": "p", "shell_escape": "f"}
 
 # Messages LaTeX fréquents, en clair.
 _READABLE = {
@@ -156,6 +166,8 @@ def compile_tex(tex: Path, timeout: float = 60, pdf_name: str = PDF) -> CompileR
     command = [
         "latexmk",
         "-xelatex",
+        # Jamais de commande du système lancée depuis le .tex (\write18), même autorisée.
+        "-no-shell-escape",
         "-interaction=nonstopmode",
         "-halt-on-error",
         "-file-line-error",
@@ -166,7 +178,10 @@ def compile_tex(tex: Path, timeout: float = 60, pdf_name: str = PDF) -> CompileR
         tex.name,
     ]
     try:
-        run = subprocess.run(command, cwd=folder, capture_output=True, text=True, timeout=timeout)
+        with _SLOTS:
+            run = subprocess.run(
+                command, cwd=folder, capture_output=True, text=True, timeout=timeout, env=SAFE_ENV
+            )
         failed = run.returncode != 0
     except subprocess.TimeoutExpired:
         return CompileResult(

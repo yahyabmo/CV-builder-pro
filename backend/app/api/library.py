@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from app.ai import llm, targeting, usage_log
 from app.ai.schemas import ProjectDraft
 from app.models.library import Level, Library, LibraryExperience, LibraryProject, LibrarySkill
+from app.paths import server_mode
 from app.services import library_import
 from app.storage import cv_store, library_store
 
@@ -51,6 +52,8 @@ async def fill(github: bool = True) -> FillOut:
     """
     content, _ = cv_store.load(cv_store.folder(cv_store.BASE_SLUG))
     before = library_store.load()
+    # En ligne, le compte GitHub de la machine est celui de Yahya : jamais lu pour les autres.
+    github = github and not server_mode()
     merged, error = await asyncio.to_thread(library_import.fill, content, before, github)
     library_store.save_projects(merged.projects)
     library_store.save_skills(merged.skills)

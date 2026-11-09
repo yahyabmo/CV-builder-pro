@@ -138,7 +138,12 @@ export function Sidebar({ cvs, route, navigate, collapsed, onToggle }: SidebarPr
 
       {me?.mode === 'serveur' && me.email && (
         <div className={cn('flex shrink-0 border-t p-2', collapsed && 'justify-center')}>
-          <Account email={me.email} collapsed={collapsed} refreshKey={JSON.stringify(route)} />
+          <Account
+            email={me.email}
+            collapsed={collapsed}
+            refreshKey={JSON.stringify(route)}
+            openPrivacy={() => navigate({ view: 'privacy' })}
+          />
         </div>
       )}
 

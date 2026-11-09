@@ -6,6 +6,7 @@ import { CommandPalette } from '@/components/layout/command-palette'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Workspace } from '@/components/layout/workspace'
 import { LibraryPage } from '@/components/library/library-page'
+import { PrivacyPage } from '@/components/settings/privacy-page'
 import { SettingsPage } from '@/components/settings/settings-page'
 import { TargetPage } from '@/components/target/target-page'
 import { WelcomeFlow } from '@/components/welcome/welcome-flow'
@@ -106,6 +107,7 @@ export default function App() {
           )}
           {route.view === 'library' && <LibraryPage />}
           {route.view === 'settings' && <SettingsPage />}
+          {route.view === 'privacy' && <PrivacyPage />}
           {route.view === 'target' && (
             <TargetPage key={route.source ?? ''} cvs={cvs} source={route.source} navigate={navigate} refresh={refresh} />
           )}

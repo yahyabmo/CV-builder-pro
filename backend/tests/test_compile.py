@@ -83,3 +83,27 @@ def test_one_column_centered_header(cv_folder: Path) -> None:
     assert order == [s.id for s in content.sections if s.visible]
     result = compile_tex(tex)
     assert result.ok, result.errors
+
+
+@needs_latex
+def test_tex_cannot_read_outside_its_folder_nor_run_commands(tmp_path: Path) -> None:
+    """En ligne, n'importe qui écrit le .tex : ni fichier du système, ni commande."""
+    secret = tmp_path / "secret.tex"
+    secret.write_text("SECRET", encoding="utf-8")
+    for name, body in {
+        "absolu": rf"\input{{{secret}}}",
+        "parent": r"\input{../secret.tex}",
+    }.items():
+        folder = tmp_path / name
+        folder.mkdir()
+        tex = folder / "cv.tex"
+        tex.write_text(rf"\documentclass{{article}}\begin{{document}}X{body}\end{{document}}")
+        assert not compile_tex(tex).ok, name
+    folder = tmp_path / "commande"
+    folder.mkdir()
+    tex = folder / "cv.tex"
+    tex.write_text(
+        r"\documentclass{article}\begin{document}X\immediate\write18{touch PIRATE}\end{document}"
+    )
+    assert compile_tex(tex).ok
+    assert not (folder / "PIRATE").exists()

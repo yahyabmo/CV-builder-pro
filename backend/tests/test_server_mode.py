@@ -204,3 +204,21 @@ def test_provider_is_the_relay_for_the_signed_in_person(online: list[httpx.Reque
     # Hors requête (personne de connecté), pas d'IA.
     with pytest.raises(llm.LLMError):
         llm.provider_from_settings()
+
+
+def test_export_gives_only_my_data(server: Path) -> None:
+    import io
+    import zipfile
+
+    client = TestClient(app)
+    alice, bob = as_("alice@example.com"), as_("bob@example.com")
+    client.put("/api/rules/lettre", headers=alice, json={"rules": ["Règle d'Alice"]})
+    client.get("/api/cvs", headers=bob)
+    answer = client.get("/api/export", headers=alice)
+    assert answer.status_code == 200
+    assert answer.headers["content-type"] == "application/zip"
+    names = zipfile.ZipFile(io.BytesIO(answer.content)).namelist()
+    assert "cv-builder-pro/base/content.json" in names
+    assert any(name.startswith("cv-builder-pro/rules/") for name in names)
+    assert not any("bob" in name or "users" in name for name in names)
+    assert client.get("/api/export").status_code == 401

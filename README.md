@@ -60,6 +60,9 @@ L'appli commence par le choix du modèle d'IA et de sa clé, puis ton CV de base
 Le détail de chaque étape, la mise à jour et Docker sont dans
 [SETUP.md](SETUP.md). macOS n'est pas pris en charge.
 
+Pour la mettre en ligne (un lien, une connexion par e-mail, rien à installer pour
+les personnes invitées), suis [serveur/README.md](serveur/README.md).
+
 ## Ce que fait l'appli
 
 ![L'éditeur : un clic sur l'aperçu ouvre le champ correspondant, la correspondance à l'offre reste en haut](docs/captures/editeur.png)

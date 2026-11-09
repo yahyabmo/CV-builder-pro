@@ -1,0 +1,25 @@
+# CV Builder Pro en ligne : l'appli et le tunnel Cloudflare, sur le serveur.
+# Mode d'emploi : serveur/README.md. Lancé par installer.sh, mis à jour par mettre-a-jour.sh.
+#
+# Aucun port n'est ouvert sur Internet : seul le tunnel (cloudflared) sort vers Cloudflare,
+# qui ne laisse entrer que les personnes invitées (Cloudflare Access).
+
+services:
+  app:
+    build: ..
+    env_file: .env
+    environment:
+      CVB_MODE: serveur
+    volumes:
+      # Toutes les données : data/ (un dossier par personne, acces.json), local/ (journal de l'IA).
+      - ./donnees:/data
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN manque dans serveur/.env}
+    depends_on:
+      - app
+    restart: unless-stopped

@@ -29,3 +29,6 @@ local/
 
 # Relais : fichiers de travail de wrangler
 .wrangler/
+
+# Version en ligne : les données du serveur
+serveur/donnees/

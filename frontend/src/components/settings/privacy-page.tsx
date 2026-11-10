@@ -26,7 +26,7 @@ export function PrivacyPage() {
 
           <Card title="Où">
             <li>
-              Sur un serveur en Europe (Allemagne), dans un dossier à ton nom. Les autres utilisateurs ne le voient jamais ; Yahya, qui gère
+              Sur un serveur en Europe (République tchèque), dans un dossier à ton nom. Les autres utilisateurs ne le voient jamais ; Yahya, qui gère
               le service, peut consulter tes CV et tes candidatures, sans les modifier.
             </li>
             <li>Tes données restent tant que ton compte existe, sans limite de durée.</li>

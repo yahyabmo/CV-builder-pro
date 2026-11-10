@@ -5,7 +5,7 @@ sans rien installer. Il se suit une seule fois, dans l'ordre. Compte une heure.
 
 Ce qu'on met en place :
 
-- **un serveur** chez Hetzner (Ubuntu 24.04, 2 processeurs, 4 Go) : il fait tourner l'appli ;
+- **un serveur** chez OVHcloud (VPS-1 : Ubuntu 24.04, 2 processeurs, 4 Go) : il fait tourner l'appli ;
 - **un domaine** chez Cloudflare : l'adresse du site ;
 - **Cloudflare Access** : la page de connexion. Une personne donne son e-mail, reçoit un code,
   et n'entre que si elle est invitée ;
@@ -20,15 +20,18 @@ Les noms des menus de Cloudflare changent parfois un peu : cherche le plus proch
 
 ## 1. Le serveur
 
-1. Crée un compte sur [hetzner.com/cloud](https://www.hetzner.com/cloud).
-2. **Nouveau projet**, puis **Ajouter un serveur** :
-   - emplacement : Falkenstein ou Nuremberg (Allemagne) ;
-   - image : **Ubuntu 24.04** ;
-   - type : **CX23** (2 processeurs, 4 Go, 40 Go) ou l'équivalent disponible ;
-   - **Sauvegardes** : coche-les (environ 1 € par mois, 7 copies du serveur entier) ;
-   - **Clé SSH** : ajoute la tienne (`cat ~/.ssh/id_ed25519.pub` sur ton PC ; si elle
-     n'existe pas : `ssh-keygen -t ed25519`).
-3. Note l'adresse IPv4 du serveur.
+1. Sur [ovhcloud.com/fr/vps](https://www.ovhcloud.com/fr/vps/), **VPS-1** › **Configurer** :
+   - engagement : **Aucun engagement** ;
+   - localisation : une ville en Europe disponible (en novembre 2026, seule Prague l'était) ;
+   - image : **Distribution uniquement › Ubuntu 24.04** ;
+   - options : **Sauvegarde automatique Premium** si elle est proposée (7 jours de copies du
+     serveur entier, hors du serveur), rien d'autre.
+2. Si une clé SSH est demandée, colle la tienne (`cat ~/.ssh/id_ed25519.pub` sur ton PC ; si
+   elle n'existe pas : `ssh-keygen -t ed25519`).
+3. OVH envoie par e-mail l'adresse IPv4 et l'utilisateur **`ubuntu`** (pas `root`) : toutes les
+   commandes du serveur se lancent avec `sudo`.
+
+Autre hébergeur : n'importe quel serveur Ubuntu 24.04 avec 2 processeurs et 4 Go convient.
 
 ## 2. Le domaine
 
@@ -95,9 +98,9 @@ Copie le code affiché. Le quota de 20 demandes par jour comptera par personne c
 ## 8. Installer le serveur
 
 ```bash
-ssh root@<adresse IPv4>
-git clone https://github.com/yahyabmo/CV-builder-pro.git /srv/cv-builder-pro
-/srv/cv-builder-pro/serveur/installer.sh
+ssh ubuntu@<adresse IPv4>
+sudo git clone https://github.com/yahyabmo/CV-builder-pro.git /srv/cv-builder-pro
+sudo /srv/cv-builder-pro/serveur/installer.sh
 ```
 
 Il installe Docker, ferme les ports, active les mises à jour de sécurité, programme la copie
@@ -106,7 +109,7 @@ de secours de chaque nuit et crée `serveur/.env`.
 ## 9. Les réglages, puis le démarrage
 
 ```bash
-nano /srv/cv-builder-pro/serveur/.env
+sudo nano /srv/cv-builder-pro/serveur/.env
 ```
 
 | Ligne | Valeur |
@@ -122,8 +125,8 @@ nano /srv/cv-builder-pro/serveur/.env
 
 ```bash
 cd /srv/cv-builder-pro/serveur
-docker compose up -d --build     # 5 à 10 minutes la première fois (LaTeX)
-docker compose ps                # « app » doit finir en « healthy »
+sudo docker compose up -d --build     # 5 à 10 minutes la première fois (LaTeX)
+sudo docker compose ps                # « app » doit finir en « healthy »
 ```
 
 Ouvre `https://app.cvbuilderpro.fr` : la page de connexion de Cloudflare demande ton e-mail,
@@ -163,5 +166,5 @@ sudo mv donnees donnees.avant && sudo tar -xzf /var/backups/cv-builder-pro/donne
 sudo docker compose start app
 ```
 
-Les sauvegardes Hetzner (étape 1) gardent en plus 7 copies du serveur entier, ailleurs que
-sur le serveur : si le serveur est perdu, on le restaure depuis la console Hetzner.
+La sauvegarde automatique d'OVH (étape 1) garde en plus des copies du serveur entier, ailleurs
+que sur le serveur : si le serveur est perdu, on le restaure depuis l'espace client OVH.

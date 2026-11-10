@@ -49,7 +49,7 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name in settings.KEYS.values():
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CVB_ADMIN", "yahya@example.com")
-    monkeypatch.setenv("CVB_SECRET", "secret-du-serveur-d-essai-0123456789abcdef")
+    monkeypatch.setenv("CVB_SECRET", "secret-du-serveur-d-essai-abcdefghijklmnop")
     monkeypatch.setattr(people, "_last_write", {})
     for name in ("CF_API_TOKEN", "CF_ACCOUNT_ID", "CF_ACCESS_GROUP_ID"):
         monkeypatch.delenv(name, raising=False)

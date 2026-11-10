@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app import access, people
+from app import access, people, user_keys
 from app.api import (
     admin,
     ai_settings,
@@ -40,6 +40,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     if server_mode():
         # Sans réglages de connexion, le serveur ne démarre pas : jamais d'appli ouverte à tous.
         access.config()
+        user_keys.check_secret()
     else:
         # Au démarrage du serveur seulement : les tests n'écrivent jamais dans data/.
         ensure_base()

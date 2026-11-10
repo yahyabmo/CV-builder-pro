@@ -21,6 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app import user_keys
 from app.paths import LOCAL_DIR, ROOT, server_mode
 
 ENV_FILE = Path(os.environ.get("CVB_ENV") or ROOT / ".env")
@@ -104,11 +105,17 @@ def load() -> AISettings:
     if SETTINGS_FILE.exists():
         data.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
     if server_mode():
-        data["provider"] = "relais"
+        # En ligne : le réglage commun du serveur, puis le choix de la personne connectée
+        # (relais, sa clé Gemini ou sa clé Mistral), jamais Ollama ni la démo.
+        data["provider"] = user_keys.provider()
     return AISettings.model_validate(data)
 
 
 def save(settings: AISettings) -> None:
+    if server_mode():
+        # En ligne, chacun ne règle que son fournisseur ; le reste est commun au serveur.
+        user_keys.set_provider(settings.provider)
+        return
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(
         json.dumps(settings.model_dump(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -116,17 +123,27 @@ def save(settings: AISettings) -> None:
 
 
 def secret(provider: Provider) -> str | None:
-    """La clé d'un fournisseur, lue dans .env au moment de l'appel."""
+    """La clé d'un fournisseur, lue dans .env au moment de l'appel.
+
+    En ligne : le code du relais est celui du serveur ; les clés Gemini et Mistral sont
+    celles de la personne connectée, chiffrées dans son dossier.
+    """
+    if server_mode() and provider in user_keys.OWN_KEYS:
+        return user_keys.get_key(provider)
     name = KEYS.get(provider)
     return read_env().get(name) if name else None
 
 
 def has_key(provider: Provider) -> bool:
+    if server_mode():
+        return provider in user_keys.ONLINE_PROVIDERS and bool(secret(provider))
     return provider in ("ollama", "demo", "fake") or bool(secret(provider))
 
 
 def key_from_environment(provider: Provider) -> bool:
     """La clé vient d'une variable d'environnement (image Docker) : .env n'y peut rien."""
+    if server_mode():
+        return False
     name = KEYS.get(provider)
     return bool(name and os.environ.get(name))
 
@@ -155,11 +172,17 @@ def _write_env(lines: list[str]) -> None:
 
 def write_key(provider: Provider, key: str) -> None:
     """Enregistre la clé d'un fournisseur dans .env, à la place de l'ancienne."""
+    if server_mode():
+        user_keys.set_key(provider, key)
+        return
     name = KEYS[provider]
     _write_env([*_env_lines(name), f"{name}={key}"])
 
 
 def delete_key(provider: Provider) -> None:
+    if server_mode():
+        user_keys.delete_key(provider)
+        return
     _write_env(_env_lines(KEYS[provider]))
 
 

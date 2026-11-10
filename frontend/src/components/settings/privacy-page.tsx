@@ -22,6 +22,10 @@ export function PrivacyPage() {
             <li>Ton adresse e-mail, pour te reconnaître à la connexion.</li>
             <li>Ta bibliothèque (expériences, projets, compétences), tes CV, tes lettres, tes thèmes et tes candidatures.</li>
             <li>Un compteur de demandes à l'IA par jour, sans le contenu des demandes.</li>
+            <li>
+              Si tu utilises ta propre clé Gemini ou Mistral : elle est chiffrée sur le serveur, ne sert qu'à tes demandes, et
+              personne ne peut la lire, pas même Yahya. Tu peux la supprimer à tout moment dans Réglages.
+            </li>
           </Card>
 
           <Card title="Où">
@@ -32,8 +36,9 @@ export function PrivacyPage() {
             <li>Tes données restent tant que ton compte existe, sans limite de durée.</li>
             <li>En plus, une copie de secours est faite chaque nuit ; les 7 plus récentes sont gardées pour réparer une panne.</li>
             <li>
-              Quand tu utilises l'IA, le texte de l'offre et de ta bibliothèque passe par Google Gemini le temps de la réponse. Le relais
-              de Yahya ne garde ni le texte ni ton adresse : seulement un compteur, sous une empreinte de ton e-mail.
+              Quand tu utilises l'IA, le texte de l'offre et de ta bibliothèque passe par Google Gemini (ou Mistral, avec ta clé) le
+              temps de la réponse. Le relais de Yahya ne garde ni le texte ni ton adresse : seulement un compteur, sous une empreinte de
+              ton e-mail.
             </li>
           </Card>
 

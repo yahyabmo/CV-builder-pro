@@ -12,7 +12,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
-from app import access, paths, people, settings
+from app import access, paths, people, settings, user_keys
 from app.ai import llm
 from app.main import app
 
@@ -49,6 +49,7 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name in settings.KEYS.values():
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CVB_ADMIN", "yahya@example.com")
+    monkeypatch.setenv("CVB_SECRET", "secret-du-serveur-d-essai-0123456789abcdef")
     monkeypatch.setattr(people, "_last_write", {})
     for name in ("CF_API_TOKEN", "CF_ACCOUNT_ID", "CF_ACCESS_GROUP_ID"):
         monkeypatch.delenv(name, raising=False)
@@ -176,7 +177,7 @@ def online(server: Path, monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]
 def test_settings_show_my_quota_never_the_keys(online: list[httpx.Request]) -> None:
     out = TestClient(app).get("/api/settings", headers=as_("alice@example.com")).json()
     assert out["ai"]["provider"] == "relais"
-    assert out["keys"] == {}
+    assert out["keys"] == {"relais": True, "gemini": False, "mistral": False}
     assert out["usage"]["calls"] == 0
     assert out["online"] == {"ok": True, "left": 14, "quota": 20, "exhausted": False, "message": ""}
     sent = online[0]
@@ -185,17 +186,55 @@ def test_settings_show_my_quota_never_the_keys(online: list[httpx.Request]) -> N
     assert SERVER_CODE not in json.dumps(out)
 
 
-def test_nobody_changes_the_ai_online(online: list[httpx.Request]) -> None:
+def test_each_person_chooses_their_own_ai(online: list[httpx.Request], server: Path) -> None:
     client = TestClient(app)
-    alice = as_("alice@example.com")
+    alice, bob = as_("alice@example.com"), as_("bob@example.com")
     ai = client.get("/api/settings", headers=alice).json()["ai"]
-    assert client.put("/api/settings", headers=alice, json=ai).status_code == 403
-    put = client.put(
-        "/api/settings/keys/gemini", headers=alice, json={"key": "AIza-fausse-cle-123"}
-    )
-    assert put.status_code == 403
+
+    # Ollama, la démo : pas en ligne. Le code du relais : celui du serveur.
+    for refused in ("ollama", "demo"):
+        put = client.put("/api/settings", headers=alice, json={**ai, "provider": refused})
+        assert put.status_code == 422
+    relay = client.put("/api/settings/keys/relais", headers=alice, json={"key": "cvb-autre-code-x"})
+    assert relay.status_code == 403
     assert client.delete("/api/settings/keys/relais", headers=alice).status_code == 403
+
+    # Alice passe à sa propre clé Gemini ; Bob reste sur le relais.
+    put = client.put("/api/settings", headers=alice, json={**ai, "provider": "gemini"})
+    assert put.status_code == 200
+    with paths.as_user("alice@example.com"):
+        settings.write_key("gemini", "AIzaCleDAliceQuiNeSortJamais0000")
+        provider = llm.provider_from_settings()
+    assert isinstance(provider, llm.GeminiProvider)
+    assert not isinstance(provider, llm.RelayProvider)
+    with paths.as_user("bob@example.com"):
+        assert isinstance(llm.provider_from_settings(), llm.RelayProvider)
+        assert settings.secret("gemini") is None
+
+    # La clé est chiffrée sur le disque et ne ressort ni par l'API ni par l'export.
+    raw = (server / "users" / "alice@example.com" / "cles.json").read_text()
+    assert "AIzaCleDAlice" not in raw
+    out = client.get("/api/settings", headers=alice).json()
+    assert out["ai"]["provider"] == "gemini"
+    assert out["keys"]["gemini"] is True
+    assert "AIzaCleDAlice" not in json.dumps(out)
+    zipped = client.get("/api/export", headers=alice).content
+    assert b"cles.json" not in zipped and b"AIzaCleDAlice" not in zipped
+    assert client.get("/api/settings", headers=bob).json()["ai"]["provider"] == "relais"
     assert not (settings.ENV_FILE).exists()
+
+    # Supprimer sa clé : seulement la sienne.
+    assert client.delete("/api/settings/keys/gemini", headers=alice).status_code == 200
+    with paths.as_user("alice@example.com"):
+        assert settings.secret("gemini") is None
+
+
+def test_server_refuses_to_start_without_secret(
+    server: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CVB_SECRET")
+    with pytest.raises(user_keys.SecretMissing), TestClient(app):
+        pass
 
 
 def test_no_setup_screen_online(online: list[httpx.Request]) -> None:

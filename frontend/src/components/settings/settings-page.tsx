@@ -41,6 +41,47 @@ const PROVIDERS: { id: Provider; name: string; text: string; other?: boolean }[]
   },
 ]
 
+const ONLINE_PROVIDERS: { id: Provider; name: string; text: string }[] = [
+  {
+    id: 'relais',
+    name: 'Gemini de Yahya',
+    text: 'Offert, rien à régler : 20 demandes par jour (environ 6 CV ciblés).',
+  },
+  { id: 'gemini', name: 'Gemini (ta clé)', text: 'Ta propre clé Google, gratuite : 20 requêtes par jour et par modèle, sans limite de Yahya.' },
+  { id: 'mistral', name: 'Mistral (ta clé)', text: 'Ta propre clé Mistral, payante : environ 0,02 $ par offre avec Mistral Large.' },
+]
+const ONLINE_NAMES = Object.fromEntries(ONLINE_PROVIDERS.map((p) => [p.id, p.name])) as Record<Provider, string>
+
+/** Ce qu'il reste aujourd'hui sur le relais de Yahya. */
+function RelayQuota({ online }: { online: OnlineAI | null }) {
+  if (!online) return null
+  if (!online.ok) return <p className="pl-7 text-[12.5px] text-warning">{online.message || 'Réessaie dans un moment.'}</p>
+  if (online.exhausted) return <p className="pl-7 text-[12.5px] text-warning">Le crédit offert ce mois-ci est épuisé. Il revient le 1er du mois.</p>
+  if (online.quota == null) return null
+  const used = online.quota - (online.left ?? 0)
+  return (
+    <div className="flex flex-col gap-1.5 pl-7">
+      <div className="flex justify-between text-[12.5px]">
+        <span>Aujourd'hui</span>
+        <span className="font-semibold tabular-nums">
+          {used} / {online.quota} demandes
+        </span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label="Demandes utilisées aujourd'hui"
+        aria-valuemin={0}
+        aria-valuemax={online.quota}
+        aria-valuenow={used}
+        className="h-2 overflow-hidden rounded-full bg-muted"
+      >
+        <div className="h-full bg-primary" style={{ width: `${Math.min(100, (used / online.quota) * 100)}%` }} />
+      </div>
+      <p className="text-[11.5px] text-muted-foreground">Le compteur repart à zéro à minuit (heure de Paris).</p>
+    </div>
+  )
+}
+
 const time = (iso: string) => new Date(iso).toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' })
 
 export function SettingsPage() {
@@ -55,64 +96,97 @@ export function SettingsPage() {
   return me.mode === 'serveur' ? <OnlineSettings /> : <LocalSettings />
 }
 
-/** En ligne : rien à installer ni à régler pour l'IA. Restent les règles de la lettre. */
+/** En ligne : le choix de l'IA (le relais de Yahya, ta clé Gemini, ta clé Mistral), rien à installer. */
 function OnlineSettings() {
-  const [online, setOnline] = useState<OnlineAI | null | undefined>(undefined)
+  const [info, setInfo] = useState<SettingsInfo | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [test, setTest] = useState<ConnectionTest | null>(null)
   useEffect(() => {
-    api.getSettings().then(
-      (info) => setOnline(info.online ?? null),
-      () => setOnline(null),
-    )
+    api.getSettings().then(setInfo, (error: Error) => toast.error('Réglages indisponibles', { description: error.message }))
   }, [])
 
-  const used = online?.ok && online.quota ? online.quota - (online.left ?? 0) : null
+  if (!info) {
+    return (
+      <Page>
+        <Skeleton className="h-40 w-full rounded-xl" />
+      </Page>
+    )
+  }
+
+  const online = info.online ?? null
+  const chosen = info.ai.provider
+  const choose = async (provider: Provider) => {
+    if (provider === chosen) return
+    setSaving(true)
+    setTest(null)
+    try {
+      setInfo(await api.saveSettings({ ...info.ai, provider }))
+      toast.success('IA choisie', { description: ONLINE_NAMES[provider] })
+    } catch (error) {
+      toast.error('Changement impossible', { description: (error as Error).message })
+    } finally {
+      setSaving(false)
+    }
+  }
+  const runTest = async () => {
+    setTesting(true)
+    setTest(null)
+    try {
+      setTest(await api.testConnection())
+      setInfo(await api.getSettings())
+    } catch (error) {
+      setTest({ ok: false, model: '', seconds: 0, message: (error as Error).message })
+    } finally {
+      setTesting(false)
+    }
+  }
+  const missingKey = chosen !== 'relais' && !info.keys[chosen]
+
   return (
     <Page>
-      <p className="text-[13px] text-muted-foreground">En ligne, il n'y a rien à installer ni de clé à coller.</p>
-
-      <section className="flex flex-col gap-3 rounded-xl border bg-card surface p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-[14px] font-semibold">Intelligence artificielle</h2>
-          {online !== undefined && (
-            <span
+      <section className="flex flex-col gap-3">
+        <h2 className="text-[13px] font-semibold">Intelligence artificielle</h2>
+        <RadioGroup value={chosen} onValueChange={(value) => void choose(value as Provider)} className="gap-2" disabled={saving}>
+          {ONLINE_PROVIDERS.map((p) => (
+            <div
+              key={p.id}
               className={cn(
-                'rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold',
-                online?.ok ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning',
+                'flex flex-col gap-3 rounded-lg border bg-card surface p-3 transition-colors',
+                chosen === p.id ? 'border-primary/60 ring-1 ring-primary/20' : 'hover:bg-muted/40',
               )}
             >
-              {online?.ok ? 'Active' : 'Indisponible'}
+              <label className="flex cursor-pointer items-start gap-3">
+                <RadioGroupItem value={p.id} className="mt-0.5" />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-[13px] font-medium">{p.name}</span>
+                  <span className="text-[12px] text-muted-foreground">{p.text}</span>
+                </span>
+              </label>
+              {p.id === 'relais' ? (
+                chosen === 'relais' && <RelayQuota online={online} />
+              ) : (
+                <KeyRow provider={p.id as KeyProvider} present={info.keys[p.id]} onChange={setInfo} />
+              )}
+            </div>
+          ))}
+        </RadioGroup>
+        <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
+          <Lock className="size-3.5 shrink-0" />
+          Ta clé est chiffrée sur le serveur et ne sert qu'à tes demandes. Personne ne peut la lire, pas même Yahya.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => void runTest()} disabled={testing || saving || missingKey} className="gap-1.5">
+            {testing ? <Loader2 className="size-4 animate-spin" /> : <PlugZap className="size-4" />} Tester la connexion
+          </Button>
+          {missingKey && <span className="text-[12px] text-muted-foreground">Ajoute d'abord ta clé.</span>}
+          {test && (
+            <span role="status" className={cn('flex items-center gap-1.5 text-[12.5px]', test.ok ? 'text-success' : 'text-destructive')}>
+              {test.ok ? <CheckCircle2 className="size-4" /> : <CircleAlert className="size-4" />}
+              {test.ok ? `${test.model} répond (${String(test.seconds).replace('.', ',')} s)` : test.message}
             </span>
           )}
         </div>
-        <p className="text-[13px] text-muted-foreground">Fournie par Yahya (Gemini). Aucune clé à gérer de ton côté.</p>
-        {online === undefined && <Skeleton className="h-8 w-full" />}
-        {online && !online.ok && <p className="text-[12.5px] text-warning">{online.message || 'Réessaie dans un moment.'}</p>}
-        {online?.exhausted && (
-          <p className="text-[12.5px] text-warning">Le crédit offert ce mois-ci est épuisé. Il revient le 1er du mois.</p>
-        )}
-        {online?.ok && online.quota != null && used != null && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between text-[13px]">
-              <span>Aujourd'hui</span>
-              <span className="font-semibold tabular-nums">
-                {used} / {online.quota} demandes
-              </span>
-            </div>
-            <div
-              role="progressbar"
-              aria-label="Demandes utilisées aujourd'hui"
-              aria-valuemin={0}
-              aria-valuemax={online.quota}
-              aria-valuenow={used}
-              className="h-2 overflow-hidden rounded-full bg-muted"
-            >
-              <div className="h-full bg-primary" style={{ width: `${Math.min(100, (used / online.quota) * 100)}%` }} />
-            </div>
-            <p className="text-[12px] text-muted-foreground">
-              Le compteur repart à zéro à minuit (heure de Paris). Un CV ciblé en utilise 3, une lettre 1.
-            </p>
-          </div>
-        )}
       </section>
 
       <section className="flex flex-col gap-2 rounded-xl border bg-card surface p-4">

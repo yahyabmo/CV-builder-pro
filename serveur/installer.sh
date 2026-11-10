@@ -33,6 +33,11 @@ else
   chmod 600 "$ICI/.env"
   echo "    serveur/.env existe déjà : gardé tel quel."
 fi
+# Le secret qui chiffre les clés des utilisateurs : tiré au hasard une fois, jamais affiché.
+if grep -q '^CVB_SECRET=$' "$ICI/.env"; then
+  sed -i "s/^CVB_SECRET=\$/CVB_SECRET=$(openssl rand -hex 32)/" "$ICI/.env"
+  echo "    secret de chiffrement des clés : créé."
+fi
 
 echo "4/5 Données : serveur/donnees (à l'utilisateur de l'appli, uid 1000)"
 mkdir -p "$ICI/donnees"

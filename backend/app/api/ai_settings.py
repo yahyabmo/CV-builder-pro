@@ -10,7 +10,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app import settings
+from app import settings, user_keys
 from app.ai import llm, quota, usage_log
 from app.paths import current_user, server_mode
 from app.settings import AISettings
@@ -52,11 +52,11 @@ class SettingsOut(BaseModel):
 def _out() -> SettingsOut:
     ai = settings.load()
     if server_mode():
-        # La consommation et les modèles de la machine sont ceux de tout le serveur :
-        # rien de tout ça n'est montré aux personnes connectées.
+        # La consommation est celle de tout le serveur : elle n'est pas montrée. Les clés
+        # sont celles de la personne connectée (présentes ou non, jamais leur valeur).
         return SettingsOut(
             ai=ai,
-            keys={},
+            keys={p: settings.has_key(p) for p in ("relais", "gemini", "mistral")},
             usage=Usage(month="", calls=0, input=0, output=0, cost=None, last=None),
             blocked={},
             relay_ready=True,
@@ -92,10 +92,10 @@ async def _online() -> Online:
     )
 
 
-def _locked() -> None:
-    """En ligne, l'IA est la même pour tout le monde : personne ne la change d'ici."""
-    if server_mode():
-        raise HTTPException(403, "En ligne, l'IA est réglée par Yahya pour tout le monde.")
+def _relay_locked(provider: str) -> None:
+    """En ligne, le code du relais est celui du serveur : personne ne le change d'ici."""
+    if server_mode() and provider == "relais":
+        raise HTTPException(403, "En ligne, le relais de Yahya est déjà prêt : rien à coller.")
 
 
 @router.get("")
@@ -108,7 +108,10 @@ async def get_settings() -> SettingsOut:
 
 @router.put("")
 def put_settings(ai: AISettings) -> SettingsOut:
-    _locked()
+    if server_mode() and ai.provider not in user_keys.ONLINE_PROVIDERS:
+        raise HTTPException(
+            422, "En ligne : Gemini de Yahya, ta clé Gemini ou ta clé Mistral seulement."
+        )
     if ai.provider == "fake":
         raise HTTPException(422, "Le faux modèle ne sert qu'aux tests.")
     settings.save(ai)
@@ -176,7 +179,7 @@ async def save_key(provider: str, body: KeyIn) -> KeyOut:
     Un quota épuisé prouve que la clé est bonne : elle est enregistrée quand même.
     Une clé refusée, ou un fournisseur injoignable : rien n'est écrit.
     """
-    _locked()
+    _relay_locked(provider)
     name = _key_provider(provider)
     key = body.key.strip()
     if not settings.KEY_PATTERN.fullmatch(key):
@@ -259,7 +262,7 @@ async def _save_code(code: str) -> KeyOut:
 
 @router.delete("/keys/{provider}")
 def delete_key(provider: str) -> SettingsOut:
-    _locked()
+    _relay_locked(provider)
     name = _key_provider(provider)
     if settings.key_from_environment(name):
         raise HTTPException(

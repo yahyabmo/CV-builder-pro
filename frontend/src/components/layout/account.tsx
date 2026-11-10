@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { LOGOUT_URL } from '@/hooks/use-me'
 import { api } from '@/lib/api'
-import type { OnlineAI } from '@/lib/types'
+import type { OnlineAI, Provider } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 /** Le reste du jour de l'IA en ligne, en une phrase. */
@@ -27,12 +27,17 @@ interface AccountProps {
 
 export function Account({ email, collapsed, refreshKey, openPrivacy }: AccountProps) {
   const [online, setOnline] = useState<OnlineAI | null>(null)
+  const [provider, setProvider] = useState<Provider>('relais')
 
   // Relu à chaque changement de page : un ciblage vient peut-être d'utiliser des demandes.
   useEffect(() => {
     let live = true
     api.getSettings().then(
-      (info) => live && setOnline(info.online ?? null),
+      (info) => {
+        if (!live) return
+        setOnline(info.online ?? null)
+        setProvider(info.ai.provider)
+      },
       () => undefined,
     )
     return () => {
@@ -41,7 +46,8 @@ export function Account({ email, collapsed, refreshKey, openPrivacy }: AccountPr
   }, [refreshKey])
 
   const initial = email.charAt(0).toUpperCase()
-  const quota = quotaLine(online)
+  // Avec sa propre clé, le quota du relais ne la concerne pas.
+  const quota = provider === 'gemini' ? 'IA : ta clé Gemini' : provider === 'mistral' ? 'IA : ta clé Mistral' : quotaLine(online)
 
   if (collapsed) {
     return (

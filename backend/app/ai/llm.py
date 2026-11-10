@@ -453,13 +453,15 @@ class DemoProvider(FakeProvider):
 
 def provider_from_settings(ai: AISettings | None = None) -> LLMProvider:
     ai = ai or settings_module.load()
-    if server_mode():
-        # En ligne, toujours le relais de Yahya, au nom de la personne connectée.
+    if server_mode() and ai.provider == "relais":
+        # En ligne, le relais de Yahya au nom de la personne connectée (son quota du jour).
         code = settings_module.secret("relais")
         user = current_user()
         if not code or not ai.relais_url or not user:
             raise LLMError("L'IA n'est pas encore prête sur ce serveur : préviens Yahya.")
         return RelayProvider(ai.relais_url, code, ai.relais_model, ai.temperature, user)
+    if server_mode() and ai.provider not in ("gemini", "mistral"):
+        raise LLMError("En ligne : choisis Gemini de Yahya, ta clé Gemini ou ta clé Mistral.")
     if ai.provider == "relais":
         code = settings_module.secret("relais")
         if not code:

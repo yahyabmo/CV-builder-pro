@@ -160,7 +160,8 @@ de WSL. Il faut Python 3.12 ou plus récent, Node.js 20.19 ou plus récent, LaTe
 
 ```bash
 sudo apt install -y git make curl libatomic1 python3 python3-venv texlive-xetex \
-  texlive-latex-extra texlive-pictures texlive-lang-french latexmk poppler-utils
+  texlive-latex-extra texlive-pictures texlive-lang-french latexmk poppler-utils \
+  tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
 ```
 
 Ubuntu 22.04 n'a que Python 3.10 : Python 3.13 vient alors du dépôt deadsnakes.

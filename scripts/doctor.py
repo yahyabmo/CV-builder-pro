@@ -32,7 +32,8 @@ LATEX_FILES = (
 )
 APT = (
     "sudo apt install -y texlive-xetex texlive-latex-extra texlive-pictures "
-    "texlive-lang-french latexmk poppler-utils make"
+    "texlive-lang-french latexmk poppler-utils make "
+    "tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng"
 )
 NVM = (
     "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash"
@@ -157,6 +158,14 @@ def main() -> int:
         report.bad("Outils PDF (poppler)", APT, "manquants : " + ", ".join(absent))
     else:
         report.ok("Outils PDF (poppler)")
+    # Facultatif : seulement pour importer un CV scanné.
+    if shutil.which("tesseract"):
+        report.ok("Lecture des CV scannés (Tesseract)")
+    else:
+        report.note(
+            "Lecture des CV scannés (facultatif)",
+            "sudo apt install -y tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng",
+        )
 
     print("\nProjet")
     venv = ROOT / ".venv" / "bin" / "python"

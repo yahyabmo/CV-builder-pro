@@ -159,9 +159,19 @@ def _last_line(sid: str, n: int, want: dict[str, Anchor], got: dict[str, Anchor]
     return got[last][0] - want[last][0]
 
 
-def clone_into(folder: Path, pdf: Path, content: CVContent, online: bool = True) -> CompileResult:
-    """Écrit le clone dans ``folder`` (main.tex, cv.pdf, clone.json) et le compile, calé."""
-    original = pages.read(pdf)
+def clone_into(
+    folder: Path,
+    pdf: Path,
+    content: CVContent,
+    online: bool = True,
+    page: pages.Page | None = None,
+    words: list[likeness.Word] | None = None,
+) -> CompileResult:
+    """Écrit le clone dans ``folder`` (main.tex, cv.pdf, clone.json) et le compile, calé.
+
+    ``page`` et ``words`` : pour un scan, la page et les mots lus par Tesseract.
+    """
+    original = page if page is not None else pages.read(pdf)
     layout = inference.infer(original, content, online)
     want = anchors(original, content)
     best: tuple[int, CloneLayout, CompileResult] | None = None
@@ -169,7 +179,7 @@ def clone_into(folder: Path, pdf: Path, content: CVContent, online: bool = True)
         result = compile_tex(write(folder, layout, content))
         if not result.ok:
             break
-        score = likeness.measure(pdf, folder / PDF).score
+        score = likeness.measure(pdf, folder / PDF, words).score
         if best is None or score > best[0]:
             best = (score, layout.model_copy(deep=True), result)
         got = anchors(pages.read(folder / PDF), content)

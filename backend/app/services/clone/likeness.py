@@ -62,6 +62,8 @@ def words(pdf: Path, page: int = 1) -> list[Word]:
 
 def text_score(original: list[Word], clone: list[Word]) -> tuple[float, list[tuple[Word, float]]]:
     """La part des mots d'origine retrouvés à leur place ; et l'écart de chacun (inf : absent)."""
+    # Un signe seul (« | », « : ») ne compte pas : seuls les mots avec lettres ou chiffres.
+    original = [w for w in original if _key(w.text)]
     pool: dict[str, list[Word]] = {}
     for w in clone:
         pool.setdefault(_key(w.text), []).append(w)
@@ -130,8 +132,11 @@ class Likeness:
     worst: list[tuple[str, float]]
 
 
-def measure(original: Path, clone: Path) -> Likeness:
-    t, gaps = text_score(words(original), words(clone))
+def measure(original: Path, clone: Path, original_words: list[Word] | None = None) -> Likeness:
+    """``original_words`` : les mots d'un scan, lus par Tesseract (son PDF n'en a pas)."""
+    t, gaps = text_score(
+        original_words if original_words is not None else words(original), words(clone)
+    )
     i = image_score(render(original), render(clone))
     worst = sorted(((w.text, d) for w, d in gaps if d > NEAR), key=lambda x: -x[1])[:12]
     return Likeness(

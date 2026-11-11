@@ -56,8 +56,8 @@ export function ImportStep({ navigate }: { navigate: (route: Route) => void }) {
           <div className="flex flex-col gap-2">
             <h1 className="text-[27px] font-semibold tracking-tight">Importe ton CV</h1>
             <p className="text-[15px] leading-relaxed text-muted-foreground">
-              Un PDF exporté depuis Word, Canva, LaTeX ou un site de CV. L'appli en lit le texte, la photo s'il y en a une, puis range tout
-              dans ses rubriques.
+              Un PDF exporté depuis Word, Canva, LaTeX ou un site de CV, ou un CV scanné. L'appli en lit le texte, la photo s'il y en a
+              une, puis range tout dans ses rubriques.
             </p>
           </div>
 
@@ -137,7 +137,16 @@ export function ImportStep({ navigate }: { navigate: (route: Route) => void }) {
                 </div>
               </div>
               <ol className="flex flex-col gap-3 text-[14px]">
-                <Step state={phase.step === 'reading' ? 'running' : 'done'} text={phase.step === 'sorting' ? `Texte lu : ${phase.reading.words} mots` : 'Lecture du texte et de la photo…'} />
+                <Step
+                  state={phase.step === 'reading' ? 'running' : 'done'}
+                  text={
+                    phase.step === 'sorting'
+                      ? phase.reading.scanned
+                        ? `CV scanné, lu par reconnaissance de caractères : ${phase.reading.words} mots (à bien relire)`
+                        : `Texte lu : ${phase.reading.words} mots`
+                      : 'Lecture du texte et de la photo (un scan prend un peu plus longtemps)…'
+                  }
+                />
                 <Step state={phase.step === 'sorting' ? 'running' : 'waiting'} text="L'IA range le contenu dans les rubriques de l'appli…" />
                 <Step state="waiting" text="Relecture avant de valider" />
               </ol>

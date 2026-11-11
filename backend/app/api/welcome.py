@@ -21,10 +21,11 @@ from app.latex.compile import LatexNotInstalled, compile_tex, page_count
 from app.models.content import CVContent
 from app.models.meta import CVMeta, now
 from app.paths import DEMO_DIR, server_mode
-from app.services import cv_import, cv_style, library_import, photo
+from app.services import cv_import, cv_style, library_import, ocr, photo
 from app.services.clone import build as clone_build
 from app.services.clone import likeness
 from app.services.clone import model as clone_model
+from app.services.clone import scan as clone_scan
 from app.storage import cv_store, library_store
 
 router = APIRouter(prefix="/api/welcome", tags=["accueil"])
@@ -42,6 +43,7 @@ class ReadingOut(BaseModel):
     words: int
     pages: int | None
     photo: bool
+    scanned: bool = False
 
 
 class ImportResult(BaseModel):
@@ -328,18 +330,35 @@ async def clone_preview(import_id: str, body: PreviewIn) -> CloneOut:
         content.header.photo = photo.PHOTO
     else:
         content.header.photo = ""
+    # Un scan : la page et ses mots viennent de Tesseract et de l'image.
+    scanned = ocr.load(origin) if cv_import.is_scanned(import_id) else None
+    page = words = None
     async with _PREVIEWS[f"{import_id}/clone"]:
         try:
-            result = await asyncio.to_thread(clone_build.clone_into, folder, source, content)
+            if scanned:
+                page = await asyncio.to_thread(clone_scan.page, scanned[0], origin)
+                words = clone_scan.words(scanned[0])
+            result = await asyncio.to_thread(
+                clone_build.clone_into, folder, source, content, True, page, words
+            )
         except LatexNotInstalled as error:
             raise HTTPException(503, str(error)) from None
         if not result.ok:
             return CloneOut(available=True, reason="Le clone n'a pas pu être mis en page.")
-        measured = await asyncio.to_thread(likeness.measure, source, folder / cv_store.PDF)
+        measured = await asyncio.to_thread(likeness.measure, source, folder / cv_store.PDF, words)
     layout = cv_store.load_clone(folder)
     if layout is None:
         return CloneOut(available=True, reason="Le clone n'a pas pu être mis en page.")
+    if scanned:
+        # Un scan ne dit pas sa police : elle est devinée à ses largeurs.
+        layout.fonts = {name: (font_id, "proche") for name, (font_id, _) in layout.fonts.items()}
     kept, differences = _summary(layout)
+    if scanned:
+        differences.insert(
+            0,
+            "CV scanné : le texte est lu par reconnaissance de caractères et la police est "
+            "devinée ; relis bien chaque rubrique",
+        )
     return CloneOut(
         available=True,
         ok=True,

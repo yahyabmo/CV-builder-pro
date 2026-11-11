@@ -56,7 +56,7 @@ try {
   reopen()
   await browser.goto(`${APP}/#/cvs`)
   await browser.waitFor(bodyHas("Réglons l'essentiel avant de commencer."), 10000)
-  await browser.waitFor(`document.querySelectorAll('ul[aria-label="Vérifications de la machine"] li').length === 3`, 15000)
+  await browser.waitFor(`document.querySelectorAll('ul[aria-label="Vérifications de la machine"] li').length === 4`, 15000)
   check(
     await browser.evaluate(`location.hash === '#/welcome/setup' && document.querySelectorAll('[role=radio]').length === 3 && ${bodyHas('Clé enregistrée')}`),
     'démarrage ouvert d’abord : trois choix, la clé Gemini trouvée, la machine vérifiée',

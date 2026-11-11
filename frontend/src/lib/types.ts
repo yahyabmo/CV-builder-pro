@@ -431,12 +431,14 @@ export interface KeyResult {
 export type KeyProvider = 'relais' | 'gemini' | 'mistral'
 
 export interface MachineCheck {
-  id: 'latex' | 'packages' | 'poppler'
+  id: 'latex' | 'packages' | 'poppler' | 'ocr'
   label: string
   /** null : pas vérifiable tant qu'un autre élément manque. */
   ok: boolean | null
   detail: string
   fix: string | null
+  /** Facultatif (la lecture des CV scannés) : son absence ne bloque rien. */
+  optional?: boolean
 }
 
 export interface Machine {
@@ -698,6 +700,8 @@ export interface ImportReading {
   words: number
   pages: number | null
   photo: boolean
+  /** Un scan, lu par reconnaissance de caractères (Tesseract) : à relire de près. */
+  scanned?: boolean
 }
 
 export interface ImportCheck {

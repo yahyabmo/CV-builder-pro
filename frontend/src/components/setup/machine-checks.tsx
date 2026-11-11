@@ -26,13 +26,15 @@ const copy = async (text: string) => {
 function Row({ check, system, last }: { check: MachineCheck; system: Machine['system']; last: boolean }) {
   if (check.ok === false) {
     return (
-      <li className={cn('flex flex-col gap-3 bg-status-interview-soft/45 px-5 py-4', !last && 'border-b')}>
+      <li className={cn('flex flex-col gap-3 px-5 py-4', !check.optional && 'bg-status-interview-soft/45', !last && 'border-b')}>
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
-          <TriangleAlert className="size-4.5 text-status-interview" aria-hidden="true" />
+          <TriangleAlert className={cn('size-4.5', check.optional ? 'text-muted-foreground' : 'text-status-interview')} aria-hidden="true" />
           <span className="flex-[1_1_200px] font-semibold">
             {check.label} : {check.detail}
           </span>
-          <span className="rounded-full bg-status-interview-soft px-2.5 py-0.5 text-[11.5px] font-semibold text-status-interview">À installer</span>
+          <span className="rounded-full bg-status-interview-soft px-2.5 py-0.5 text-[11.5px] font-semibold text-status-interview">
+            {check.optional ? 'Facultatif' : 'À installer'}
+          </span>
         </div>
         {check.fix ? (
           <>

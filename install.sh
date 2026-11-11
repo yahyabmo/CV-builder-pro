@@ -39,7 +39,8 @@ NODE_MIN="20.19"
 LATEX_FILES="fontspec.sty enumitem.sty tikz.sty hyperref.sty xcolor.sty geometry.sty graphicx.sty french.ldf"
 # libatomic1 : Node.js 26 en a besoin, et une Ubuntu minimale ne l'a pas.
 APT_PACKAGES="git make curl ca-certificates libatomic1 python3 python3-venv texlive-xetex
-  texlive-latex-extra texlive-pictures texlive-lang-french latexmk poppler-utils"
+  texlive-latex-extra texlive-pictures texlive-lang-french latexmk poppler-utils
+  tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng"
 
 python_ok() { "$1" -c 'import sys; sys.exit(sys.version_info < (3, 12))' 2>/dev/null; }
 find_python() {

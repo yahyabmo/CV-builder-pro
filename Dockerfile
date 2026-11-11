@@ -20,6 +20,7 @@ FROM python:3.13-slim-trixie
 RUN apt-get update \
     && apt-get install -y -q texlive-xetex texlive-latex-extra texlive-pictures \
         texlive-lang-french latexmk poppler-utils \
+        tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/*
 
 WORKDIR /app

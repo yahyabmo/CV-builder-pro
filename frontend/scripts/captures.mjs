@@ -89,7 +89,7 @@ try {
   await browser.goto(`${APP}/#/cvs`)
   await browser.waitFor(bodyHas("Réglons l'essentiel avant de commencer."), 15000)
   await click(byText('button', 'Recommandé'))
-  await browser.waitFor(`document.querySelectorAll('ul[aria-label="Vérifications de la machine"] li').length === 3 && ${bodyHas('Ton code d’accès')}`, 15000)
+  await browser.waitFor(`document.querySelectorAll('ul[aria-label="Vérifications de la machine"] li').length === 4 && ${bodyHas('Ton code d’accès')}`, 15000)
   await shot('demarrage.png')
   await click(byText('button', 'Plus tard : découvrir en mode Démo'))
 

@@ -44,7 +44,7 @@ from app.models.content import (
     SkillsSection,
 )
 from app.paths import DEMO_DIR, IMPORTS_DIR
-from app.services import photo
+from app.services import ocr, photo
 from app.services.library_import import split_skills
 from app.text import slugify
 
@@ -83,6 +83,8 @@ class Reading:
     words: int
     pages: int | None
     photo: bool
+    # Un scan lu par Tesseract : le texte est à relire de près.
+    scanned: bool = False
 
 
 class Check(BaseModel):
@@ -157,14 +159,37 @@ def read_pdf(data: bytes) -> Reading:
         shutil.rmtree(target)
         raise
     words = len(re.findall(r"\w+", text))
+    scanned = False
     if words < MIN_WORDS:
-        shutil.rmtree(target)
-        raise UnreadablePdf(
-            "Ce PDF ne contient presque pas de texte : c'est sans doute un scan, une image. "
-            "Exporte ton CV en PDF depuis ton traitement de texte, ou remplis-le à la main."
-        )
+        # Presque pas de texte : un scan. Tesseract le lit, s'il est là.
+        if not ocr.available():
+            shutil.rmtree(target)
+            raise UnreadablePdf(
+                "Ce PDF est un scan (une image) : pour le lire, l'appli a besoin de Tesseract. "
+                f"Installe-le avec : {ocr.INSTALL}. Sinon, exporte ton CV en PDF depuis ton "
+                "traitement de texte, ou remplis-le à la main."
+            )
+        try:
+            text = ocr.text(ocr.read(source, target))
+        except (ocr.OcrError, subprocess.SubprocessError, OSError):
+            shutil.rmtree(target)
+            raise UnreadablePdf("Ce scan ne se lit pas : il est peut-être trop flou.") from None
+        words = len(re.findall(r"\w+", text))
+        scanned = True
+        if words < MIN_WORDS:
+            shutil.rmtree(target)
+            raise UnreadablePdf(
+                "Même lu comme un scan, ce PDF n'a presque pas de texte : il est peut-être trop "
+                "flou ou trop petit. Remplis ton CV à la main, ou exporte-le en PDF."
+            )
     (target / TEXT).write_text(text, encoding="utf-8")
-    return Reading(import_id, words, page_count(source), _photo(source, target))
+    # Un scan est une seule grande image : ce n'est pas la photo du CV.
+    has_photo = False if scanned else _photo(source, target)
+    return Reading(import_id, words, page_count(source), has_photo, scanned)
+
+
+def is_scanned(import_id: str) -> bool:
+    return (folder(import_id) / ocr.OCR_FILE).is_file()
 
 
 def text_of(import_id: str) -> str:

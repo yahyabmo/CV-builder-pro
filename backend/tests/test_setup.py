@@ -140,8 +140,9 @@ def test_setup_step_comes_first(client: TestClient) -> None:
 
 def test_machine_check(client: TestClient) -> None:
     found = client.get("/api/system/check").json()
-    assert [c["id"] for c in found["checks"]] == ["latex", "packages", "poppler"]
-    assert found["ok"] == all(c["ok"] for c in found["checks"])
+    assert [c["id"] for c in found["checks"]] == ["latex", "packages", "poppler", "ocr"]
+    # La lecture des scans est facultative : elle ne compte pas dans « ok ».
+    assert found["ok"] == all(c["ok"] for c in found["checks"] if not c["optional"])
 
 
 def test_machine_check_without_tools(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,8 +151,9 @@ def test_machine_check_without_tools(monkeypatch: pytest.MonkeyPatch) -> None:
     for kind in ("linux", "wsl"):
         monkeypatch.setattr(machine, "system", lambda kind=kind: kind)
         found = machine.check()
-        latex, packages, poppler = found.checks
+        latex, packages, poppler, scans = found.checks
         assert not found.ok
+        assert scans.optional and scans.fix.startswith("sudo apt install -y tesseract-ocr")
         assert latex.ok is False and latex.fix.startswith("sudo apt install -y texlive-xetex")
         assert packages.ok is None and packages.fix is None
         assert poppler.fix == "sudo apt install -y poppler-utils"

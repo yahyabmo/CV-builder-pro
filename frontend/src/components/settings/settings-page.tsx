@@ -561,6 +561,13 @@ function MachineSection() {
           <CheckCircle2 className="size-4 text-success" />
           <span className="flex-[1_1_240px] text-[13px]">LaTeX, paquets du CV et outils PDF installés.</span>
           <RecheckButton busy={busy} onClick={() => void refresh()} />
+          {machine.checks
+            .filter((check) => check.optional && check.ok === false && check.fix)
+            .map((check) => (
+              <span key={check.id} className="basis-full text-[12px] text-muted-foreground">
+                {check.label} : <code className="font-mono text-[11.5px] select-all">{check.fix}</code>
+              </span>
+            ))}
         </div>
       ) : (
         <>

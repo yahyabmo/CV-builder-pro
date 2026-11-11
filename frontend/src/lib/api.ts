@@ -152,6 +152,8 @@ export const api = {
   saveExperiences: (experiences: LibraryExperience[]) =>
     request<Library>('/api/library/experiences', { method: 'PUT', body: JSON.stringify(experiences) }),
   fillLibrary: () => request<FillResult>('/api/library/fill', { method: 'POST' }),
+  skillGroup: (term: string, groups: string[]) =>
+    request<{ group: string | null; exists: boolean }>('/api/library/skills/group', { method: 'POST', body: JSON.stringify({ term, groups }) }),
   addSkills: (text: string, options: { category?: string; level?: SkillLevel | null; evidence?: string; source?: 'manuel' | 'offre' } = {}) =>
     request<BulkResult>('/api/library/skills/bulk', { method: 'POST', body: JSON.stringify({ text, ...options }) }),
   draftProject: (id: string) => request<ProjectDraft>(`/api/library/projects/${id}/draft`, { method: 'POST' }),

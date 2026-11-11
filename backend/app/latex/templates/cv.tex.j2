@@ -143,7 +143,7 @@
 \BLOCK{elif sec.kind == "languages"}
 \BLOCK{for it in sec.items}
 \VAR{mark("item", sec.id, loop.index0)}
-\VAR{h.fmt(b.language_name, e(it.name) ~ " :")} \VAR{e(it.level)}\BLOCK{if not loop.last}\\\BLOCK{endif}
+\VAR{h.fmt(b.language_name, e(it.name) ~ (" :" if it.level.strip() else ""))} \VAR{e(it.level)}\BLOCK{if not loop.last}\\\BLOCK{endif}
 
 \BLOCK{endfor}
 

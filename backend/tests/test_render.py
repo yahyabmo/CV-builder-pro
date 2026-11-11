@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.latex.render import grid_rows, pt, render
-from app.models.content import CVContent, GridItem
+from app.models.content import CVContent, GridItem, Language
 from app.models.style import CVStyle, TextStyle
 
 
@@ -83,3 +83,11 @@ def test_palette_roles_and_link_color(base_content: CVContent, base_style: CVSty
     assert r"\color{cvmuted}" in tex
     assert r"\hypersetup{colorlinks=true, urlcolor=cvlink" in tex
     assert r"\hypersetup" not in render(base_content, base_style)
+
+
+def test_language_without_level_has_no_colon(base_content: CVContent, base_style: CVStyle) -> None:
+    section = next(s for s in base_content.sections if s.kind == "languages")
+    section.items.append(Language(name="Allemand", level=""))
+    tex = render(base_content, base_style)
+    assert "Allemand}" in tex or "Allemand " in tex
+    assert "Allemand :" not in tex

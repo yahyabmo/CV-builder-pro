@@ -207,3 +207,19 @@ def test_fill_without_github_never_calls_gh(
     monkeypatch.setattr(library_import, "_gh", no_github)
     answer = client.post("/api/library/fill?github=false").json()
     assert answer["added"]["skills"] > 10 and answer["github_error"] is None
+
+
+def test_skill_group_for_a_keyword(client: TestClient) -> None:
+    ask = lambda term, groups: client.post(  # noqa: E731
+        "/api/library/skills/group", json={"term": term, "groups": groups}
+    ).json()
+    # Un groupe du CV qui convient : il est repris.
+    assert ask("Git", ["Programmation", "Outils & Systèmes"]) == {
+        "group": "Outils & Systèmes",
+        "exists": True,
+    }
+    assert ask("Power BI", ["Programmation", "Data & IA"]) == {"group": "Data & IA", "exists": True}
+    # Aucun groupe qui convient : un nom de nouveau groupe.
+    assert ask("Power BI", ["Programmation"]) == {"group": "IA & Data", "exists": False}
+    # Un mot inconnu du dictionnaire : rien d'imposé.
+    assert ask("autonomie", ["Outils"]) == {"group": None, "exists": False}

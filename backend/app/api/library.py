@@ -11,7 +11,7 @@ from app.ai import llm, targeting, usage_log
 from app.ai.schemas import ProjectDraft
 from app.models.library import Level, Library, LibraryExperience, LibraryProject, LibrarySkill
 from app.paths import server_mode
-from app.services import library_import
+from app.services import library_import, skill_categories
 from app.storage import cv_store, library_store
 
 router = APIRouter(prefix="/api/library", tags=["library"])
@@ -36,6 +36,26 @@ def put_skills(skills: list[LibrarySkill]) -> Library:
         raise HTTPException(422, "Deux compétences ont le même identifiant.")
     library_store.save_skills(skills)
     return library_store.load()
+
+
+class GroupIn(BaseModel):
+    term: str = Field(min_length=1, max_length=120)
+    groups: list[str] = Field(default_factory=list, max_length=50)
+
+
+class GroupOut(BaseModel):
+    # Le groupe du CV où ranger le mot, ou un nouveau nom ; None : rien de connu.
+    group: str | None
+    exists: bool
+
+
+@router.post("/skills/group")
+def skill_group(body: GroupIn) -> GroupOut:
+    """Le groupe de compétences où ranger un mot-clé, deviné sans IA (« Power BI » → Outils)."""
+    if skill_categories.canonical(body.term) is None:
+        return GroupOut(group=None, exists=False)
+    found = skill_categories.guess(body.term, body.groups)
+    return GroupOut(group=found, exists=found in body.groups)
 
 
 class FillOut(BaseModel):

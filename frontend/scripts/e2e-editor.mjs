@@ -88,19 +88,36 @@ try {
   await sleep(300)
   check((await meta()).application.status === 'sent', 'statut changé depuis l’éditeur, enregistré')
 
-  // ─── Bande de score : un mot-clé absent ajouté à un groupe de compétences ───
+  // ─── Bande de score : un mot-clé absent rangé dans la rubrique choisie ───
   await browser.waitFor(`document.querySelector('[role=region][aria-label="Correspondance à l\\'offre"]')?.textContent.includes('%')`, 15000)
-  const chip = `[...document.querySelectorAll('[role=region][aria-label="Correspondance à l\\'offre"] button')].find(b => b.querySelector('svg') && !b.textContent.startsWith('Voir'))`
-  const term = await browser.evaluate(`${chip}?.textContent.trim() ?? ''`)
-  if (term) {
-    await click(chip)
-    await browser.waitFor(bodyHas('L\'ajouter à un groupe de compétences'), 5000)
-    await click(`[...document.querySelectorAll('[data-slot=popover-content] button')][0]`)
+  const chips = `[...document.querySelectorAll('[role=region][aria-label="Correspondance à l\\'offre"] button')].filter(b => b.querySelector('svg') && !b.textContent.startsWith('Voir'))`
+  const terms = await browser.evaluate(`${chips}.map(b => b.textContent.trim())`)
+  if (terms.length > 0) {
+    const term = terms[0]
+    await click(`${chips}[0]`)
+    await browser.waitFor(bodyHas('n\'est pas dans le PDF'), 5000)
+    const popover = `document.querySelector('[data-slot=popover-content]')`
+    check(
+      await browser.evaluate(`${popover}.textContent.includes('SOFT SKILLS') && ${popover}.textContent.includes('nouvelle case') && ${popover}.textContent.includes('Nouveau groupe')`),
+      'la fenêtre propose toutes les rubriques (groupes, Soft skills, nouveau groupe)',
+    )
+    const group = (await content()).sections.find((s) => s.kind === 'skills').items[0].label
+    await click(`[...${popover}.querySelectorAll('button')].find(b => b.textContent.startsWith(${JSON.stringify(group)}))`)
     await browser.waitFor(saved, 20000)
     const skills = (await content()).sections.filter((s) => s.kind === 'skills').flatMap((s) => s.items.map((i) => i.text))
-    check(skills.some((text) => text.includes(term)), `mot-clé « ${term} » ajouté à un groupe de compétences`)
+    check(skills.some((text) => text.includes(term)), `mot-clé « ${term} » ajouté au groupe « ${group} »`)
     await browser.waitFor(`document.activeElement?.closest('[data-item^="competences/"]')`, 5000)
     check(true, 'le champ du groupe est ouvert et prêt à la frappe')
+    if (terms.length > 1) {
+      const second = terms[1]
+      await sleep(400)
+      await click(`[...document.querySelectorAll('[role=region][aria-label="Correspondance à l\\'offre"] button')].find(b => b.textContent.trim() === ${JSON.stringify(second)})`)
+      await browser.waitFor(bodyHas('n\'est pas dans le PDF'), 5000)
+      await click(`[...${popover}.querySelectorAll('button')].filter(b => b.textContent.includes('Nouvelle case')).at(-1)`)
+      await browser.waitFor(saved, 20000)
+      const grid = (await content()).sections.find((s) => s.kind === 'grid').items.map((i) => i.text.toLowerCase())
+      check(grid.includes(second.toLowerCase()), `mot-clé « ${second} » ajouté en nouvelle case de Soft skills`)
+    }
   } else check(await browser.evaluate(bodyHas('Tous les mots-clés')), 'aucun mot-clé absent')
   await browser.screenshot(`${out}/editeur-score.png`)
 

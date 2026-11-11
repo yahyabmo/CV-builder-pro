@@ -42,6 +42,8 @@ import type {
   TargetRequest,
   Theme,
   Me,
+  SignatureInfo,
+  SignatureSize,
   AdminPeople,
   AdminPersonDetail,
 } from './types'
@@ -175,6 +177,21 @@ export const api = {
     }
     return (await response.json()) as { photo: string; version: number }
   },
+  signature: () => request<SignatureInfo>('/api/signature'),
+  signatureImageUrl: (version: number | null) => `/api/signature/image?v=${version ?? 0}`,
+  uploadSignature: async (file: Blob, name: string) => {
+    const form = new FormData()
+    form.append('file', file, name)
+    // Pas d'en-tête Content-Type : le navigateur pose la frontière du formulaire.
+    const response = await fetch('/api/signature', { method: 'PUT', body: form })
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { detail?: unknown }
+      throw new ApiError(response.status, readable(body.detail))
+    }
+    return (await response.json()) as SignatureInfo
+  },
+  setSignatureSize: (size: SignatureSize) => request<SignatureInfo>('/api/signature', { method: 'PATCH', body: JSON.stringify({ size }) }),
+  deleteSignature: () => request<SignatureInfo>('/api/signature', { method: 'DELETE' }),
   listFonts: () => request<FontInfo[]>('/api/fonts'),
   fontUrl: (id: string, style: 'regular' | 'bold' | 'italic' | 'bold_italic' = 'regular') =>
     `/api/fonts/${id}/${style}`,

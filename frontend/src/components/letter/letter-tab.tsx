@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AutoTextarea, Field } from '@/components/editor/fields'
+import { SignatureImage } from '@/components/letter/signature-image'
 import { Segmented } from '@/components/style/controls'
 import {
   AlertDialog,
@@ -371,6 +372,7 @@ function LetterFields({ editor }: { editor: LetterEditor }) {
 
       <Field label="Formule de fin" multiline value={letter.closing} onChange={(v) => set((d) => void (d.closing = v), 'closing')} />
       <Field label="Signature" value={letter.signature} onChange={(v) => set((d) => void (d.signature = v), 'signature')} />
+      <SignatureImage editor={editor} />
     </div>
   )
 }

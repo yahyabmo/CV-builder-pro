@@ -21,6 +21,8 @@ class LetterContent(BaseModel):
     paragraphs: list[str] = Field(default_factory=list)
     closing: str = "Je vous prie d'agréer, Madame, Monsieur, mes salutations distinguées."
     signature: str = ""
+    # L'image de signature de la personne (s'il y en a une) en bas de cette lettre.
+    signature_image: bool = True
     # Les réponses de la personne avant la génération, gardées pour regénérer.
     why: str = ""
     detail: str = ""

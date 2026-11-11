@@ -657,9 +657,20 @@ export interface LetterContent {
   paragraphs: string[]
   closing: string
   signature: string
+  /** L'image de signature de la personne en bas de cette lettre (vrai par défaut). */
+  signature_image?: boolean
   why: string
   detail: string
   mode: CVMode
+}
+
+export type SignatureSize = 'small' | 'medium' | 'large'
+
+/** L'image de signature de la personne, la même pour toutes ses lettres. */
+export interface SignatureInfo {
+  present: boolean
+  size: SignatureSize
+  version: number | null
 }
 
 export interface LetterCheck {

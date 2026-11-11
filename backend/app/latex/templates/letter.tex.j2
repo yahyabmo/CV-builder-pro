@@ -11,6 +11,7 @@
 \usepackage[french]{babel}
 \BLOCK{endif}
 \usepackage{xcolor}
+\usepackage{graphicx}
 \usepackage[hidelinks]{hyperref}
 
 \setmainfont{\VAR{font.prefix}}[
@@ -79,6 +80,11 @@
 \VAR{e(letter.closing)}
 \ecart{16pt}{0.5}
 {\raggedleft\textbf{\VAR{e(letter.signature or name)}}\par}
+\BLOCK{if signature}
+% L'image de signature, sous le nom, alignée à droite.
+\vspace{3pt}
+{\raggedleft\includegraphics[height=\VAR{signature.height}cm]{\VAR{signature.file}}\par}
+\BLOCK{endif}
 % Le reste en bas, un peu plus large que les autres écarts.
 \vspace{0pt plus 1.6fill}
 

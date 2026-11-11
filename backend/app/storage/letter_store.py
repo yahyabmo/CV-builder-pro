@@ -1,10 +1,12 @@
 """La lettre de motivation d'un CV : letter.json, lettre.tex et lettre.pdf dans son dossier."""
 
 import json
+import shutil
 from pathlib import Path
 
 from app.latex.letter import render_letter
 from app.models.letter import LetterContent
+from app.services import signature as signature_image
 from app.storage import cv_store
 
 LETTER = "letter.json"
@@ -28,16 +30,31 @@ def save(path: Path, letter: LetterContent) -> None:
     tmp.replace(path / LETTER)
 
 
+def _signature(letter: LetterContent) -> dict[str, str] | None:
+    if not (letter.signature_image and signature_image.exists()):
+        return None
+    height = signature_image.HEIGHTS[signature_image.size()]
+    return {"file": signature_image.FILE, "height": f"{height:g}"}
+
+
 def render(path: Path, letter: LetterContent) -> str:
     content, style = cv_store.load(path)
-    return render_letter(letter, content, style)
+    return render_letter(letter, content, style, _signature(letter))
 
 
 def write_tex(path: Path) -> Path:
-    """Régénère lettre.tex depuis letter.json et le haut du CV."""
+    """Régénère lettre.tex depuis letter.json et le haut du CV.
+
+    L'image de signature est recopiée à côté : LaTeX ne lit rien hors du dossier du CV.
+    """
     letter = load(path)
     if letter is None:
         raise FileNotFoundError(LETTER)
+    copy = path / signature_image.FILE
+    if _signature(letter):
+        shutil.copyfile(signature_image.path(), copy)
+    else:
+        copy.unlink(missing_ok=True)
     tex = path / TEX
     tex.write_text(render(path, letter), encoding="utf-8")
     return tex

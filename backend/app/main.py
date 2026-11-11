@@ -28,6 +28,7 @@ from app.api import (
     library,
     project_ideas,
     rules,
+    signature,
     system,
     target,
     welcome,
@@ -68,6 +69,7 @@ app.include_router(ai_settings.router)
 app.include_router(ats.router)
 app.include_router(rules.router)
 app.include_router(letters.router)
+app.include_router(signature.router)
 app.include_router(welcome.router)
 app.include_router(project_ideas.router)
 app.include_router(system.router)

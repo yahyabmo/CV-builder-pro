@@ -67,7 +67,13 @@ def layout(letter: LetterContent) -> dict[str, str]:
     return {"size": f"{size:g}", "baseline": f"{size * 1.22:.1f}", "leading": f"{leading:g}"}
 
 
-def render_letter(letter: LetterContent, content: CVContent, style: CVStyle) -> str:
+def render_letter(
+    letter: LetterContent,
+    content: CVContent,
+    style: CVStyle,
+    signature: dict[str, str] | None = None,
+) -> str:
+    """``signature`` : l'image sous le nom (``file`` à côté du .tex, ``height`` en cm)."""
     family = fonts.get(FONT)
     english = content.language == "en"
     template = environment().get_template("letter.tex.j2")
@@ -80,4 +86,5 @@ def render_letter(letter: LetterContent, content: CVContent, style: CVStyle) -> 
         english=english,
         subject_label="Subject" if english else "Objet",
         layout=layout(letter),
+        signature=signature,
     )

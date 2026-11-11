@@ -9,6 +9,7 @@
 //
 //   node scripts/e2e-target.mjs <dossier des captures>
 
+import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -270,6 +271,34 @@ try {
   await click(`document.querySelector('button[aria-label="Monter le paragraphe 2"]')`)
   await until(async () => (await letterNow()).paragraphs[0] === ANSWERS.LetterDraft.paragraphs[1], 'paragraphes réordonnés')
   check(true, 'paragraphe remonté')
+
+  // ─── Image de signature : déposée, sous le nom, taille, case de cette lettre ───
+  const sigFile = join(mkdtempSync(join(tmpdir(), 'signature-')), 'signature.jpg')
+  execFileSync(new URL('../../.venv/bin/python', import.meta.url).pathname, [
+    '-c',
+    `from PIL import Image, ImageDraw; i = Image.new('RGB', (700, 400), (236, 234, 228)); ImageDraw.Draw(i).line([(150, 260), (260, 150), (380, 270), (520, 160)], fill=(25, 35, 95), width=8); i.save(${JSON.stringify(sigFile)}, quality=92)`,
+  ])
+  const letterTex = async () => (await (await fetch(`${API}/api/cvs/${SLUG}/letter/source`)).json()).tex
+  await browser.waitFor(bodyHas("Dépose l'image de ta signature"), 10000)
+  const picker = await browser.send('Runtime.evaluate', { expression: `document.querySelector('input[aria-label="Image de signature"]')` })
+  await browser.send('DOM.setFileInputFiles', { files: [sigFile], objectId: picker.result.result.objectId })
+  await browser.waitFor(`document.querySelector('img[alt="Ta signature"]')?.naturalWidth > 0`, 15000)
+  await until(async () => (await letterTex()).includes('includegraphics[height=1.6cm]{signature.png}'), 'signature dans la lettre')
+  check(true, 'image de signature déposée, fond retiré, sous le nom (moyenne)')
+  const pdfHref = `document.querySelector('a[aria-label="Télécharger la lettre en PDF"]').getAttribute('href')`
+  const pdfBefore = await browser.evaluate(pdfHref)
+  await click(byText('[role=radio]', 'Grande'))
+  await until(async () => (await letterTex()).includes('height=2cm'), 'taille de la signature')
+  await browser.waitFor(`${pdfHref} !== ${JSON.stringify(pdfBefore)}`, 30000)
+  check(true, 'taille « Grande » : 2 cm dans la lettre, aperçu recompilé')
+  await sleep(1500)
+  await browser.screenshot(`${out}/lettre-signature.png`)
+  await click(`document.querySelector('button[role=checkbox][aria-checked=true]')`)
+  await until(async () => (await letterNow()).signature_image === false && !(await letterTex()).includes('includegraphics'), 'case décochée')
+  check(true, 'décochée : plus d’image sur cette lettre')
+  await click(`document.querySelector('button[role=checkbox][aria-checked=false]')`)
+  await until(async () => (await letterNow()).signature_image === true, 'case recochée')
+  await fetch(`${API}/api/signature`, { method: 'DELETE' })
 
   await browser.evaluate(`(() => { navigator.clipboard.writeText = async (text) => { window.__copied = text }; return true })()`)
   await click(byText('button', 'Copier le texte'))

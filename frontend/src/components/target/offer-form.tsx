@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
+import { baseCVs } from '@/lib/bases'
 import type { CVSummary, SettingsInfo, TargetRequest } from '@/lib/types'
 
 const MIN_TEXT = 80
@@ -174,7 +175,7 @@ export function OfferForm({ cvs, value, onChange, onSubmit, openSettings }: Offe
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(cvs ?? [{ slug: 'base', meta: { name: 'Version classique' } } as CVSummary]).map((cv) => (
+              {(cvs ? [...baseCVs(cvs), ...cvs.filter((cv) => cv.meta.kind !== 'base')] : [{ slug: 'base', meta: { name: 'Version classique' } } as CVSummary]).map((cv) => (
                 <SelectItem key={cv.slug} value={cv.slug} className="text-[13px]">
                   {cv.meta.name}
                 </SelectItem>

@@ -70,11 +70,17 @@ async def fill(github: bool = True) -> FillOut:
 
     ``github=false`` : le CV seul, sans lire le compte GitHub connecté sur la machine.
     """
-    content, _ = cv_store.load(cv_store.folder(cv_store.BASE_SLUG))
     before = library_store.load()
     # En ligne, le compte GitHub de la machine est celui de Yahya : jamais lu pour les autres.
     github = github and not server_mode()
-    merged, error = await asyncio.to_thread(library_import.fill, content, before, github)
+    # Tous les CV classiques ; GitHub une seule fois.
+    merged, error = before, None
+    for n, slug in enumerate(cv_store.bases()):
+        content, _ = cv_store.load(cv_store.folder(slug))
+        merged, found = await asyncio.to_thread(
+            library_import.fill, content, merged, github and n == 0
+        )
+        error = error or found
     library_store.save_projects(merged.projects)
     library_store.save_skills(merged.skills)
     library_store.save_experiences(merged.experiences)

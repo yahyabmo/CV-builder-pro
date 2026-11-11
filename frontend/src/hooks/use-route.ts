@@ -9,7 +9,8 @@ import { useCallback, useEffect, useState } from 'react'
 //   #/settings       réglages de l'IA
 //   #/privacy        confidentialité des données (en ligne)
 //   #/admin          administration (en ligne, administrateur) ; #/admin/<e-mail> : une personne
-//   #/welcome        premier lancement (…/setup, …/import, …/review/<id>, …/manual)
+//   #/welcome        premier lancement (…/setup, …/import, …/review/<id>, …/manual) ;
+//                    #/welcome/new : un CV classique de plus
 
 export type Route =
   | { view: 'cvs' }
@@ -19,7 +20,7 @@ export type Route =
   | { view: 'admin'; email?: string }
   | { view: 'cv'; slug: string }
   | { view: 'target'; source?: string }
-  | { view: 'welcome'; step: 'home' | 'setup' | 'import' | 'manual' }
+  | { view: 'welcome'; step: 'home' | 'setup' | 'import' | 'manual' | 'new' }
   | { view: 'welcome'; step: 'review'; id: string }
 
 function parse(hash: string): Route | null {
@@ -38,8 +39,8 @@ function parse(hash: string): Route | null {
     if (email.includes('@')) return { view: 'admin', email }
   }
   if (path === 'welcome') return { view: 'welcome', step: 'home' }
-  if (path === 'welcome/setup' || path === 'welcome/import' || path === 'welcome/manual')
-    return { view: 'welcome', step: path.slice(8) as 'setup' | 'import' | 'manual' }
+  if (path === 'welcome/setup' || path === 'welcome/import' || path === 'welcome/manual' || path === 'welcome/new')
+    return { view: 'welcome', step: path.slice(8) as 'setup' | 'import' | 'manual' | 'new' }
   const review = /^welcome\/review\/([0-9a-f]{12})$/.exec(path)
   if (review) return { view: 'welcome', step: 'review', id: review[1] }
   const cv = /^cv\/([a-z0-9-]+)$/.exec(path)

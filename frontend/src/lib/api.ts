@@ -47,6 +47,7 @@ import type {
   AdminPeople,
   AdminPersonDetail,
 } from './types'
+import { intentFields, type WelcomeIntent } from './welcome-intent'
 
 /** Évènement de fenêtre : la personne connectée n'a plus accès (détail : son e-mail). */
 export const ACCESS_PAUSED = 'cvb:access-paused'
@@ -136,8 +137,8 @@ async function stream<E>(path: string, body: unknown, onEvent: (event: E) => voi
 export const api = {
   listCVs: () => request<CVSummary[]>('/api/cvs'),
   getCV: (slug: string) => request<CVDetail>(`/api/cvs/${slug}`),
-  createCV: (name: string, source: string) =>
-    request<CVSummary>('/api/cvs', { method: 'POST', body: JSON.stringify({ name, source }) }),
+  createCV: (name: string, source: string, kind: 'cv' | 'base' = 'cv') =>
+    request<CVSummary>('/api/cvs', { method: 'POST', body: JSON.stringify({ name, source, kind }) }),
   renameCV: (slug: string, name: string, label?: string) =>
     request<CVSummary>(`/api/cvs/${slug}`, { method: 'PATCH', body: JSON.stringify({ name, label }) }),
   deleteCV: (slug: string) => request<{ trash: string }>(`/api/cvs/${slug}`, { method: 'DELETE' }),
@@ -307,10 +308,10 @@ export const api = {
   previewImport: (id: string, content: CVContent, keep: string[] | null = null) =>
     request<CompileResult>(`/api/welcome/import/${id}/preview`, { method: 'POST', body: JSON.stringify({ content, keep }) }),
   importPreviewUrl: (id: string, version: number) => `/api/welcome/import/${id}/preview.pdf?v=${version}`,
-  applyBase: (content: CVContent, importId?: string, keepPhoto = true, keep: string[] | null = null) =>
+  applyBase: (content: CVContent, importId?: string, keepPhoto = true, keep: string[] | null = null, intent: WelcomeIntent | null = null) =>
     request<ApplyBaseResult>('/api/welcome/apply', {
       method: 'POST',
-      body: JSON.stringify({ content, import_id: importId ?? null, keep_photo: keepPhoto, keep }),
+      body: JSON.stringify({ content, import_id: importId ?? null, keep_photo: keepPhoto, keep, ...intentFields(intent) }),
     }),
   saveSettings: (ai: AISettings) =>
     request<SettingsInfo>('/api/settings', { method: 'PUT', body: JSON.stringify(ai) }),

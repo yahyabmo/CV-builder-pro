@@ -5,8 +5,12 @@ import { toast } from 'sonner'
 import { useMe } from '@/hooks/use-me'
 import type { Route } from '@/hooks/use-route'
 import { api } from '@/lib/api'
+import { LAST_OPENED } from '@/lib/bases'
 import type { SettingsInfo } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { clearIntent, readIntent, type WelcomeIntent } from '@/lib/welcome-intent'
+
+import { AddStep } from './add-step'
 
 import { ImportStep } from './import-step'
 import { ManualStep } from './manual-step'
@@ -24,14 +28,27 @@ interface WelcomeFlowProps {
 /** Le premier lancement, en plein écran : régler l'IA, puis importer son CV, le saisir, ou garder l'exemple. */
 export function WelcomeFlow({ route, navigate, refresh }: WelcomeFlowProps) {
   const done = {
-    onTarget: () => navigate({ view: 'target' }),
-    onStyle: () => navigate({ view: 'cv', slug: 'base' }),
+    onTarget: (slug: string) => navigate({ view: 'target', source: slug }),
+    onStyle: (slug: string) => navigate({ view: 'cv', slug }),
     refresh,
   }
+  // Sortie de l'ajout ou du remplacement d'un CV classique : retour au dernier CV ouvert.
+  const leave = () => {
+    clearIntent()
+    let last = 'base'
+    try {
+      last = localStorage.getItem(LAST_OPENED) ?? 'base'
+    } catch {
+      /* stockage indisponible */
+    }
+    navigate({ view: 'cv', slug: last })
+  }
+  const intent = readIntent()
   return (
     <div className="h-dvh overflow-y-auto bg-background">
       {route.step === 'setup' && <SetupStep navigate={navigate} />}
-      {route.step === 'home' && <Home navigate={navigate} refresh={refresh} />}
+      {(route.step === 'new' || (route.step === 'home' && intent?.mode === 'new')) && <AddStep navigate={navigate} refresh={refresh} leave={leave} />}
+      {route.step === 'home' && intent?.mode !== 'new' && <Home navigate={navigate} refresh={refresh} intent={intent} leave={leave} />}
       {route.step === 'import' && <ImportStep navigate={navigate} />}
       {route.step === 'review' && <ReviewStep key={route.id} id={route.id} navigate={navigate} {...done} />}
       {route.step === 'manual' && <ManualStep navigate={navigate} {...done} />}
@@ -75,7 +92,16 @@ export function FlowHeader({ back, current, aside, title }: { back: () => void; 
   )
 }
 
-function Home({ navigate, refresh }: { navigate: (route: Route) => void; refresh: () => Promise<void> }) {
+interface HomeProps {
+  navigate: (route: Route) => void
+  refresh: () => Promise<void>
+  // « replace » : un CV classique existant reçoit un nouveau contenu.
+  intent: WelcomeIntent | null
+  leave: () => void
+}
+
+function Home({ navigate, refresh, intent, leave }: HomeProps) {
+  const replacing = intent?.mode === 'replace' ? intent : null
   const [settings, setSettings] = useState<SettingsInfo | null>(null)
   const me = useMe()
   useEffect(() => {
@@ -99,17 +125,25 @@ function Home({ navigate, refresh }: { navigate: (route: Route) => void; refresh
       <div className="flex items-center gap-2.5">
         <img src="/favicon.png" alt="" className="size-7.5" />
         <span className="text-[15px] font-semibold tracking-tight">CV Builder Pro</span>
+        {replacing && (
+          <button type="button" onClick={leave} className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-1 text-[13px] text-foreground/80 hover:bg-muted">
+            <ChevronLeft className="size-4" /> Retour à mes CV
+          </button>
+        )}
       </div>
 
       <div className="flex max-w-[680px] flex-col gap-2.5">
-        <h1 className="text-[34px] leading-tight font-semibold tracking-tight text-balance">Commençons par ton CV de base.</h1>
+        <h1 className="text-[34px] leading-tight font-semibold tracking-tight text-balance">
+          {replacing ? `Remplacer « ${replacing.name} »` : 'Commençons par ton CV de base.'}
+        </h1>
         <p className="text-[15.5px] leading-relaxed text-muted-foreground">
-          C'est la version que tu adapteras ensuite à chaque offre. Elle sert aussi à remplir ta bibliothèque : tout ce qui est vrai sur ton
-          parcours, et que l'IA pourra utiliser.
+          {replacing
+            ? "Le nouveau contenu prend sa place ; l'ancien reste récupérable dans la corbeille. Tes autres CV classiques et tes candidatures ne bougent pas."
+            : "C'est la version que tu adapteras ensuite à chaque offre. Elle sert aussi à remplir ta bibliothèque : tout ce qui est vrai sur ton parcours, et que l'IA pourra utiliser."}
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className={cn('grid gap-4', replacing ? 'md:grid-cols-2' : 'md:grid-cols-3')}>
         <Choice
           primary
           badge="Recommandé"
@@ -128,14 +162,14 @@ function Home({ navigate, refresh }: { navigate: (route: Route) => void; refresh
           facts={['Environ 15 minutes', 'Tu peux t’arrêter et reprendre plus tard']}
           onClick={() => navigate({ view: 'welcome', step: 'manual' })}
         />
-        <Choice
+        {!replacing && <Choice
           icon={<PlayCircle className="size-5.5" />}
           tint="bg-status-offer-soft text-status-offer"
           title="Partir de l'exemple"
-          text="Le CV fictif de Camille Laurent, pour découvrir l'appli. Tu le remplaceras quand tu veux, depuis « Ton CV de base »."
+          text="Le CV fictif de Camille Laurent, pour découvrir l'appli. Tu le remplaceras quand tu veux, depuis « Mes CV classiques »."
           facts={['Immédiat', 'Avec une offre d’exemple, même sans clé d’IA']}
           onClick={() => void keepExample()}
-        />
+        />}
       </div>
 
       <div className="flex flex-wrap gap-x-7 gap-y-2.5 text-[13px] text-muted-foreground">

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { Route } from '@/hooks/use-route'
 import { api } from '@/lib/api'
+import { lastBase } from '@/lib/bases'
 import type { ApplyResult, CVSummary, Draft, TargetEvent, TargetRequest } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -68,7 +69,7 @@ interface TargetPageProps {
 export function TargetPage({ cvs, source, navigate, refresh }: TargetPageProps) {
   const [phase, setPhase] = useState<Phase>({ step: 'form' })
   const [form, setForm] = useState<OfferDraft>({
-    source: source ?? 'base',
+    source: source ?? lastBase(cvs),
     mode: 'text',
     text: '',
     url: '',

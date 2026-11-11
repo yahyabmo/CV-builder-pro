@@ -715,6 +715,8 @@ export interface ImportResult {
 export interface ApplyBaseResult {
   added: { skills: number; experiences: number; projects: number }
   compile: CompileResult
+  /** Le CV classique écrit (« base » pour la première version). */
+  slug: string
 }
 
 /** Un rectangle de la page, en points, depuis le coin haut gauche. */

@@ -5,13 +5,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useMe } from '@/hooks/use-me'
 import type { Route } from '@/hooks/use-route'
 import { useTheme, type ThemeChoice } from '@/hooks/use-theme'
-import { dayLabel } from '@/lib/applications'
-import { api } from '@/lib/api'
 import type { CVSummary } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { openPalette } from '@/lib/workspace-commands'
 
 import { Account } from './account'
+import { BaseCVs } from './base-cvs'
 
 interface SidebarProps {
   cvs: CVSummary[] | null
@@ -20,13 +19,12 @@ interface SidebarProps {
   // Replié : seulement les icônes, pour laisser la place à l'éditeur.
   collapsed: boolean
   onToggle: () => void
+  refresh: () => Promise<void>
 }
 
-export function Sidebar({ cvs, route, navigate, collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ cvs, route, navigate, collapsed, onToggle, refresh }: SidebarProps) {
   const me = useMe()
-  const base = cvs?.find((cv) => cv.meta.kind === 'base') ?? null
   const due = cvs?.filter((cv) => cv.due).length ?? 0
-  const onBase = route.view === 'cv' && base !== null && route.slug === base.slug
   const items = [
     { label: 'Candidatures', icon: <Sheet className="size-4" />, active: route.view === 'cvs', go: () => navigate({ view: 'cvs' }), badge: due },
     { label: 'Cibler une offre', icon: <Sparkles className="size-4" />, active: route.view === 'target', go: () => navigate({ view: 'target' }), badge: 0 },
@@ -88,56 +86,7 @@ export function Sidebar({ cvs, route, navigate, collapsed, onToggle }: SidebarPr
           ))}
         </nav>
 
-        {collapsed ? (
-          base && (
-            <div className="flex justify-center pt-5">
-              <Hint label="Ton CV de base">
-                <button
-                  type="button"
-                  onClick={() => navigate({ view: 'cv', slug: base.slug })}
-                  aria-label="Ton CV de base"
-                  aria-current={onBase ? 'page' : undefined}
-                  className={cn('rounded-md p-1 transition-colors hover:bg-sidebar-accent', onBase && 'bg-sidebar-accent shadow-xs')}
-                >
-                  <Thumbnail cv={base} />
-                </button>
-              </Hint>
-            </div>
-          )
-        ) : (
-          <div className="flex flex-col gap-1.5 px-2.5 pt-6">
-            <div className="flex items-center justify-between px-2">
-              <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Ton CV de base</p>
-              <button
-                type="button"
-                onClick={() => navigate({ view: 'welcome', step: 'home' })}
-                className="rounded px-1 text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Remplacer
-              </button>
-            </div>
-            {cvs === null && <div className="h-14 animate-pulse rounded-lg bg-sidebar-accent/60" />}
-            {base && (
-              <button
-                type="button"
-                onClick={() => navigate({ view: 'cv', slug: base.slug })}
-                aria-current={onBase ? 'page' : undefined}
-                className={cn(
-                  'flex items-center gap-2.5 rounded-xl border bg-background/70 p-2 text-left transition-colors hover:bg-background',
-                  onBase && 'border-primary/40 bg-background ring-1 ring-primary/20',
-                )}
-              >
-                <Thumbnail cv={base} />
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-[13px] font-medium">{base.meta.name}</span>
-                  <span className="truncate text-[11.5px] text-muted-foreground">
-                    {base.meta.pages != null && `${base.meta.pages} p. · `}modifiée le {dayLabel(base.meta.updated_at)}
-                  </span>
-                </span>
-              </button>
-            )}
-          </div>
-        )}
+        <BaseCVs cvs={cvs} route={route} navigate={navigate} refresh={refresh} collapsed={collapsed} />
       </ScrollArea>
 
       {me?.mode === 'serveur' && me.email && (
@@ -184,14 +133,6 @@ function Hint({ label, children }: { label: string; children: React.ReactNode })
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
-  )
-}
-
-function Thumbnail({ cv }: { cv: CVSummary }) {
-  return cv.pdf_version ? (
-    <img src={api.thumbnailUrl(cv.slug, cv.pdf_version)} alt="" className="h-11 w-8 shrink-0 rounded-sm border bg-white object-cover object-top" />
-  ) : (
-    <span className="block h-11 w-8 shrink-0 rounded-sm border bg-muted" />
   )
 }
 

@@ -48,7 +48,7 @@ export function StyleEditor({ slug, style, content, editor }: StyleEditorProps) 
   const set = editor.updateStyle
   return (
     <div className="flex flex-col gap-2.5 pb-24">
-      <ThemesPanel style={style} replaceStyle={editor.replaceStyle} />
+      <ThemesPanel style={style} replaceStyle={editor.replaceStyle} baseSlug={editor.detail?.meta.source ?? 'base'} />
       <ColorsGroup style={style} set={set} />
       <TypographyGroup style={style} set={set} />
       <TitlesGroup style={style} set={set} />

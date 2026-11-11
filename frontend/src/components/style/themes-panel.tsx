@@ -21,10 +21,12 @@ import { Group } from './controls'
 interface ThemesPanelProps {
   style: CVStyle
   replaceStyle: CvEditor['replaceStyle']
+  // Le CV classique dont vient ce CV (la première version par défaut).
+  baseSlug: string
 }
 
 /** Thèmes : enregistrer le style courant sous un nom, en appliquer un. */
-export function ThemesPanel({ style, replaceStyle }: ThemesPanelProps) {
+export function ThemesPanel({ style, replaceStyle, baseSlug }: ThemesPanelProps) {
   const [themes, setThemes] = useState<Theme[] | null>(null)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -59,9 +61,10 @@ export function ThemesPanel({ style, replaceStyle }: ThemesPanelProps) {
 
   const resetToBase = async () => {
     try {
-      const base = await api.getCV('base')
+      // Le CV classique d'origine, ou la première version s'il n'existe plus.
+      const base = await api.getCV(baseSlug).catch(() => api.getCV('base'))
       replaceStyle(base.style)
-      toast.success('Style de la version classique appliqué', { description: 'Ctrl+Z pour revenir en arrière.' })
+      toast.success(`Style de « ${base.meta.name} » appliqué`, { description: 'Ctrl+Z pour revenir en arrière.' })
     } catch (error) {
       toast.error('Version classique indisponible', { description: error instanceof Error ? error.message : String(error) })
     }
@@ -118,7 +121,7 @@ export function ThemesPanel({ style, replaceStyle }: ThemesPanelProps) {
         ))}
       </div>
       <Button variant="ghost" size="sm" className="h-7 self-start px-2 text-[12px] text-muted-foreground" onClick={() => void resetToBase()}>
-        <RotateCcw className="size-3.5" /> Revenir au style de la version classique
+        <RotateCcw className="size-3.5" /> Revenir au style du CV classique
       </Button>
       <AlertDialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
         <AlertDialogContent>

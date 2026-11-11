@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useMe } from '@/hooks/use-me'
 import { api } from '@/lib/api'
+import { baseCVs } from '@/lib/bases'
 import type { Library, LibraryExperience, LibraryProject, LibrarySkill, ProjectDraft, SkillLevel } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -433,13 +434,16 @@ function TagInput({ values, onChange, placeholder }: { values: string[]; onChang
 // ─── Expériences ─────────────────────────────────────────────────────────────
 
 function Experiences({ library, change }: { library: Library; change: Change }) {
-  // Les puces du CV classique, pour les signaler dans les réserves.
+  // Les puces des CV classiques, pour les signaler dans les réserves.
   const [onCv, setOnCv] = useState<Set<string>>(new Set())
   useEffect(() => {
-    api.getCV('base').then(
-      (cv) => setOnCv(new Set(cv.content.sections.flatMap((s) => (s.kind === 'experience' ? s.items.flatMap((i) => i.bullets) : [])))),
-      () => undefined,
-    )
+    api
+      .listCVs()
+      .then((all) => Promise.all(baseCVs(all).map((cv) => api.getCV(cv.slug))))
+      .then(
+        (bases) => setOnCv(new Set(bases.flatMap((cv) => cv.content.sections.flatMap((s) => (s.kind === 'experience' ? s.items.flatMap((i) => i.bullets) : []))))),
+        () => undefined,
+      )
   }, [])
   const edit = (id: string, mutate: (e: LibraryExperience) => void) =>
     change('experiences', (lib) => {

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import type { Route } from '@/hooks/use-route'
 import { api } from '@/lib/api'
+import { clearIntent, readIntent } from '@/lib/welcome-intent'
 import type { ApplyBaseResult, ContactItem, CVContent, Section } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -80,7 +81,8 @@ function contactLines(c: Contacts): ContactItem[][] {
 }
 
 /** La saisie à la main, section par section ; le brouillon reste dans le navigateur. */
-export function ManualStep({ navigate, onTarget, onStyle, refresh }: { navigate: (route: Route) => void; onTarget: () => void; onStyle: () => void; refresh: () => Promise<void> }) {
+export function ManualStep({ navigate, onTarget, onStyle, refresh }: { navigate: (route: Route) => void; onTarget: (slug: string) => void; onStyle: (slug: string) => void; refresh: () => Promise<void> }) {
+  const [intent] = useState(readIntent)
   const [draft, setDraft] = useState<Draft | null>(loadDraft)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState<ApplyBaseResult | null>(null)
@@ -128,7 +130,8 @@ export function ManualStep({ navigate, onTarget, onStyle, refresh }: { navigate:
     setSaving(true)
     try {
       const final = finalized({ ...content, header: { ...content.header, contact_lines: contactLines(contacts), photo: '' } })
-      const applied = await api.applyBase(final)
+      const applied = await api.applyBase(final, undefined, true, null, intent)
+      clearIntent()
       try {
         localStorage.removeItem(DRAFT)
       } catch {
@@ -274,7 +277,7 @@ export function ManualStep({ navigate, onTarget, onStyle, refresh }: { navigate:
           </div>
         </section>
       </main>
-      <DoneDialog result={done} onTarget={onTarget} onStyle={onStyle} />
+      <DoneDialog result={done} intent={intent} onTarget={onTarget} onStyle={onStyle} />
     </>
   )
 }

@@ -14,9 +14,10 @@ import { TargetPage } from '@/components/target/target-page'
 import { WelcomeFlow } from '@/components/welcome/welcome-flow'
 import { useRoute, type Route } from '@/hooks/use-route'
 import { ACCESS_PAUSED, api } from '@/lib/api'
+import { LAST_OPENED } from '@/lib/bases'
 import type { CVSummary } from '@/lib/types'
 
-const LAST = 'cv-builder.selected'
+const LAST = LAST_OPENED
 const FOLDED = 'cv-builder.sidebar.collapsed'
 
 function readFolded(): boolean {
@@ -110,7 +111,7 @@ export default function App() {
 
   return (
     <div className="flex h-dvh overflow-hidden">
-      <Sidebar cvs={cvs} route={route} navigate={navigate} collapsed={collapsed} onToggle={toggleSidebar} />
+      <Sidebar cvs={cvs} route={route} navigate={navigate} collapsed={collapsed} onToggle={toggleSidebar} refresh={refresh} />
       <main className="h-full min-w-0 flex-1">
           {route.view === 'cvs' && (
             <ApplicationsPage cvs={cvs} onOpen={openCV} onTarget={() => navigate({ view: 'target' })} refresh={refresh} />

@@ -141,7 +141,7 @@ export function Workspace({ slug }: { slug: string }) {
                 {name || <Skeleton className="h-4 w-40" />}
               </h1>
             </nav>
-            {kind === 'base' && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">CV de base</span>}
+            {kind === 'base' && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">CV classique</span>}
             {editor.detail && kind === 'cv' && <StatusMenu key={slug} slug={slug} initial={editor.detail.meta.application.status} />}
             <SyncBadge state={doc.sync} seconds={doc.compile?.seconds} />
             <div className="ml-auto flex shrink-0 items-center">
@@ -264,7 +264,7 @@ export function Workspace({ slug }: { slug: string }) {
                     },
                     recompile: editor.recompile,
                     manual: editor.manual,
-                    locked: slug === 'base' && !editor.manual ? 'La version classique reste en mode visuel : duplique-la pour modifier son code.' : null,
+                    locked: kind === 'base' && !editor.manual ? 'Un CV classique reste en mode visuel : duplique-le pour modifier son code.' : null,
                     compile: editor.compile,
                     texUrl: api.texUrl(slug),
                     fileName: `${editor.detail?.file_stem ?? slug}.tex`,

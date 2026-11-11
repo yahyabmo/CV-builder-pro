@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import type { Route } from '@/hooks/use-route'
 import { api } from '@/lib/api'
+import { clearIntent, readIntent } from '@/lib/welcome-intent'
 import type { ApplyBaseResult, CVContent, ImportCheck, ImportResult, Section, StyleFinding } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -18,8 +19,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerSrc
 interface ReviewStepProps {
   id: string
   navigate: (route: Route) => void
-  onTarget: () => void
-  onStyle: () => void
+  onTarget: (slug: string) => void
+  onStyle: (slug: string) => void
   refresh: () => Promise<void>
 }
 
@@ -58,6 +59,8 @@ function counts(content: CVContent, skills: number) {
 
 /** Étape 2 : le PDF d'origine à gauche, ce que l'appli a repéré à droite, puis la validation. */
 export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewStepProps) {
+  // Ajout d'un CV classique, ou remplacement : lu une fois, gardé pour le message de fin.
+  const [intent] = useState(readIntent)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
   const [content, setContent] = useState<CVContent | null>(null)
@@ -115,7 +118,8 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
   const validate = async () => {
     setApplying(true)
     try {
-      const applied = await api.applyBase(final(), id, keepPhoto, styleKeep)
+      const applied = await api.applyBase(final(), id, keepPhoto, styleKeep, intent)
+      clearIntent()
       await refresh()
       setDone(applied)
     } catch (error) {
@@ -319,7 +323,7 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
           {applying && <Loader2 className="size-4 animate-spin" />} Valider ce CV
         </Button>
       </div>
-      <DoneDialog result={done} onTarget={onTarget} onStyle={onStyle} />
+      <DoneDialog result={done} intent={intent} onTarget={onTarget} onStyle={onStyle} />
     </>
   )
 }

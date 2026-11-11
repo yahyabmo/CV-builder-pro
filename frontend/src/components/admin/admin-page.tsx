@@ -309,7 +309,7 @@ function PersonView({ email, navigate }: { email: string; navigate: (route: Rout
     )
   }
   const targeted = detail.cvs.filter((cv) => cv.meta.kind === 'cv')
-  const base = detail.cvs.find((cv) => cv.meta.kind === 'base')
+  const bases = detail.cvs.filter((cv) => cv.meta.kind === 'base')
   const shown = detail.cvs.find((cv) => cv.slug === chosen) ?? null
 
   return (
@@ -340,10 +340,12 @@ function PersonView({ email, navigate }: { email: string; navigate: (route: Rout
           {targeted.map((cv) => (
             <CVRow key={cv.slug} cv={cv} active={cv.slug === chosen} onClick={() => setChosen(cv.slug)} />
           ))}
-          {base && (
+          {bases.length > 0 && (
             <>
-              <h3 className="pt-3 text-[14px] font-semibold">CV de base</h3>
-              <CVRow cv={base} active={base.slug === chosen} onClick={() => setChosen(base.slug)} />
+              <h3 className="pt-3 text-[14px] font-semibold">{bases.length > 1 ? 'CV classiques' : 'CV classique'}</h3>
+              {bases.map((cv) => (
+                <CVRow key={cv.slug} cv={cv} active={cv.slug === chosen} onClick={() => setChosen(cv.slug)} />
+              ))}
             </>
           )}
         </section>

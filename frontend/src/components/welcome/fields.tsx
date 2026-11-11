@@ -3,6 +3,7 @@ import { CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { ApplyBaseResult, CVContent, Section } from '@/lib/types'
+import type { WelcomeIntent } from '@/lib/welcome-intent'
 
 export type Kind = Section['kind']
 type Item = Section['items'][number]
@@ -154,12 +155,21 @@ export function finalized(content: CVContent): CVContent {
 
 interface DoneDialogProps {
   result: ApplyBaseResult | null
-  onTarget: () => void
-  onStyle: () => void
+  // Ce qui a été fabriqué : un CV classique de plus, ou un CV classique remplacé.
+  intent: WelcomeIntent | null
+  onTarget: (slug: string) => void
+  onStyle: (slug: string) => void
 }
 
-export function DoneDialog({ result, onTarget, onStyle }: DoneDialogProps) {
+export function DoneDialog({ result, intent, onTarget, onStyle }: DoneDialogProps) {
   const added = result?.added
+  const slug = result?.slug ?? 'base'
+  const what =
+    intent?.mode === 'new'
+      ? `« ${intent.name} » s'ajoute à tes CV classiques. Les autres ne bougent pas.`
+      : intent?.mode === 'replace'
+        ? `Il remplace « ${intent.name} », gardé dans la corbeille.`
+        : 'Il remplace la version classique précédente, gardée dans la corbeille.'
   return (
     <Dialog open={result !== null}>
       <DialogContent className="sm:max-w-md" showCloseButton={false} onEscapeKeyDown={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()}>
@@ -167,16 +177,16 @@ export function DoneDialog({ result, onTarget, onStyle }: DoneDialogProps) {
           <span className="mb-1 flex size-11 items-center justify-center rounded-xl bg-status-offer-soft text-status-offer">
             <CheckCircle2 className="size-6" />
           </span>
-          <DialogTitle className="text-[20px]">Ton CV de base est prêt</DialogTitle>
+          <DialogTitle className="text-[20px]">Ton CV classique est prêt</DialogTitle>
           <DialogDescription className="text-[13.5px] leading-relaxed">
-            Il remplace la version classique précédente, gardée dans la corbeille.
+            {what}
             {added && ` Ta bibliothèque a reçu ${added.skills} compétences, ${added.experiences} expériences et ${added.projects} projets.`}
             {result && !result.compile.ok && ' La compilation a échoué : ouvre le CV pour voir l’erreur.'}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2 pt-1">
-          <Button onClick={onTarget}>Cibler une première offre</Button>
-          <Button variant="outline" onClick={onStyle}>
+          <Button onClick={() => onTarget(slug)}>Cibler une offre avec ce CV</Button>
+          <Button variant="outline" onClick={() => onStyle(slug)}>
             Ajuster le style
           </Button>
         </div>

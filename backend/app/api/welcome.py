@@ -6,10 +6,11 @@ la bibliothèque à partir du nouveau CV, comme « Remplir depuis mon CV ».
 
 import asyncio
 import shutil
+from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import settings
 from app.ai import llm, targeting, usage_log
@@ -18,7 +19,7 @@ from app.api.cvs import compile_now
 from app.api.schemas import CompileOut
 from app.latex.compile import LatexNotInstalled, compile_tex
 from app.models.content import CVContent
-from app.models.meta import now
+from app.models.meta import CVMeta, now
 from app.paths import DEMO_DIR, server_mode
 from app.services import cv_import, cv_style, library_import, photo
 from app.storage import cv_store, library_store
@@ -55,6 +56,10 @@ class ApplyIn(BaseModel):
     keep_photo: bool = True
     # Le style repéré dans le PDF à reprendre (clés de cv_style.KEYS) ; None : celui de l'appli.
     keep: list[str] | None = None
+    # Où va le CV : ``new_name`` = un CV classique de plus, à ce nom ; sinon ``target``,
+    # le CV classique remplacé (la première version par défaut).
+    new_name: str | None = Field(default=None, max_length=120)
+    target: str = cv_store.BASE_SLUG
 
 
 class PreviewIn(BaseModel):
@@ -69,6 +74,8 @@ class StyleOut(BaseModel):
 class ApplyOut(BaseModel):
     added: dict[str, int]
     compile: CompileOut
+    # Le CV classique écrit.
+    slug: str = cv_store.BASE_SLUG
 
 
 def _base():
@@ -100,12 +107,15 @@ def _guess(import_id: str) -> cv_style.Guess:
     return found
 
 
-def _styled(import_id: str | None, content: CVContent, keep: list[str] | None):
-    """Le style de la version classique, avec ce qu'on garde du style du PDF."""
-    _, style = cv_store.load(_base())
+def _styled(import_id: str | None, content: CVContent, keep: list[str] | None, slug: str = "base"):
+    """Le style d'un CV classique (la première version par défaut), avec ce qu'on garde du PDF."""
+    _, style = cv_store.load(cv_store.folder(slug))
     if import_id is None or keep is None:
         return style, content
     return cv_style.apply_guess(style, content, _guess(import_id), set(keep) & set(cv_style.KEYS))
+
+
+_PREVIEWS: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 @router.get("")
@@ -224,13 +234,16 @@ async def preview(import_id: str, body: PreviewIn) -> CompileOut:
     folder = _folder(import_id) / "apercu"
     folder.mkdir(exist_ok=True)
     style, content = _styled(import_id, body.content, body.keep)
-    cv_store.save(folder, content, style)
-    if content.header.photo:
-        shutil.copy(folder.parent / photo.PHOTO, folder / photo.PHOTO)
-    try:
-        result = await asyncio.to_thread(compile_tex, cv_store.write_tex(folder))
-    except LatexNotInstalled as error:
-        raise HTTPException(503, str(error)) from None
+    # Deux aperçus demandés coup sur coup (onglet, puis case) : l'un après l'autre, jamais
+    # deux compilations dans le même dossier.
+    async with _PREVIEWS[import_id]:
+        cv_store.save(folder, content, style)
+        if content.header.photo:
+            shutil.copy(folder.parent / photo.PHOTO, folder / photo.PHOTO)
+        try:
+            result = await asyncio.to_thread(compile_tex, cv_store.write_tex(folder))
+        except LatexNotInstalled as error:
+            raise HTTPException(503, str(error)) from None
     return CompileOut(ok=result.ok, pages=result.pages, seconds=round(result.seconds, 2))
 
 
@@ -244,20 +257,36 @@ def preview_pdf(import_id: str) -> FileResponse:
 
 @router.post("/apply")
 async def apply(body: ApplyIn) -> ApplyOut:
-    """Le CV devient la version classique ; la bibliothèque reçoit ce qu'il contient."""
-    style, content = _styled(body.import_id, body.content, body.keep)
+    """Le CV devient un CV classique (nouveau, ou à la place d'un autre) ; la bibliothèque
+    reçoit ce qu'il contient."""
+    new_name = (body.new_name or "").strip()
+    if not new_name:
+        try:
+            replaced = cv_store.folder(body.target)
+        except cv_store.UnknownCV:
+            raise HTTPException(404, "CV classique introuvable") from None
+        if cv_store.load_meta(replaced).kind != "base":
+            raise HTTPException(409, "Seul un CV classique peut être remplacé ici.")
+    # Un nouveau CV classique part du style de la première version ; un remplacé garde le sien.
+    style, content = _styled(
+        body.import_id, body.content, body.keep, cv_store.BASE_SLUG if new_name else body.target
+    )
     source_photo = None
     if body.import_id is not None:
         candidate = _folder(body.import_id) / photo.PHOTO
         if body.keep_photo and candidate.exists():
             source_photo = candidate
-    base = _base()
-    # L'ancienne version classique reste récupérable dans la corbeille.
-    cv_store.TRASH_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = now().strftime("%Y%m%d-%H%M%S")
-    shutil.copytree(
-        base, cv_store.TRASH_DIR / f"base-{stamp}", ignore=shutil.ignore_patterns("build")
-    )
+    if new_name:
+        slug, base = cv_store.new_folder(new_name)
+        cv_store.save_meta(base, CVMeta(name=new_name, kind="base"))
+    else:
+        slug, base = body.target, replaced
+        # L'ancien CV classique reste récupérable dans la corbeille.
+        cv_store.TRASH_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = now().strftime("%Y%m%d-%H%M%S")
+        shutil.copytree(
+            base, cv_store.TRASH_DIR / f"{slug}-{stamp}", ignore=shutil.ignore_patterns("build")
+        )
     if source_photo is not None:
         content.header.photo = photo.store(base, source_photo.read_bytes())
     else:
@@ -266,6 +295,10 @@ async def apply(body: ApplyIn) -> ApplyOut:
     cv_store.save_content(base, content)
     cv_store.save_style(base, style)
     cv_store.touch(base, welcome=False)
+    if new_name:
+        # Le premier lancement est passé : l'accueil ne se rouvre plus sur la première version.
+        main = _base()
+        cv_store.save_meta(main, cv_store.load_meta(main).model_copy(update={"welcome": False}))
 
     before = library_store.load()
     merged, _ = await asyncio.to_thread(library_import.fill, content, before, False)
@@ -277,4 +310,4 @@ async def apply(body: ApplyIn) -> ApplyOut:
         "experiences": len(merged.experiences) - len(before.experiences),
         "projects": len(merged.projects) - len(before.projects),
     }
-    return ApplyOut(added=added, compile=await compile_now(cv_store.BASE_SLUG))
+    return ApplyOut(added=added, compile=await compile_now(slug), slug=slug)

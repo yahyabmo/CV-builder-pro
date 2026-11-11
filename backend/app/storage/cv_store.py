@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import unicodedata
 from pathlib import Path
+from typing import Literal
 
 from app.latex.render import render
 from app.models.content import CVContent
@@ -115,10 +116,14 @@ def list_all() -> list[tuple[str, CVMeta]]:
     return found
 
 
-def create(name: str, source: str) -> str:
-    """Un nouveau CV, copie de ``source`` (contenu, style, photo) ; rend son identifiant."""
-    origin = folder(source)
-    content, style = load(origin)
+def bases() -> list[str]:
+    """Les CV classiques : la première version (``base``), puis les autres, par nom."""
+    others = [(slug, meta.name) for slug, meta in list_all()[1:] if meta.kind == "base"]
+    return [BASE_SLUG] + [slug for slug, _ in sorted(others, key=lambda item: item[1].lower())]
+
+
+def new_folder(name: str) -> tuple[str, Path]:
+    """Un dossier vide pour un nouveau CV, à un identifiant libre tiré de son nom."""
     CVS_DIR.mkdir(parents=True, exist_ok=True)
     base = slugify(name, "cv")
     slug, n = base, 2
@@ -126,17 +131,28 @@ def create(name: str, source: str) -> str:
         slug, n = f"{base}-{n}", n + 1
     target = CVS_DIR / slug
     target.mkdir()
+    return slug, target
+
+
+def create(name: str, source: str, kind: Literal["base", "cv"] = "cv") -> str:
+    """Un nouveau CV, copie de ``source`` (contenu, style, photo) ; rend son identifiant.
+
+    ``kind="base"`` : un CV classique de plus, toujours en mode visuel.
+    """
+    origin = folder(source)
+    content, style = load(origin)
+    slug, target = new_folder(name)
     save(target, content, style)
     photo = content.header.photo
     if photo and (origin / photo).is_file():
         shutil.copy2(origin / photo, target / photo)
-    # Une copie d'un CV en mode manuel garde son code LaTeX, et son mode.
-    manual = load_meta(origin).mode == "manual"
+    # Une copie d'un CV en mode manuel garde son code LaTeX, et son mode (sauf un CV classique).
+    manual = load_meta(origin).mode == "manual" and kind == "cv"
     if manual:
         shutil.copy2(origin / TEX, target / TEX)
     save_meta(
         target,
-        CVMeta(name=name.strip(), kind="cv", source=source, mode="manual" if manual else "visual"),
+        CVMeta(name=name.strip(), kind=kind, source=source, mode="manual" if manual else "visual"),
     )
     return slug
 
@@ -242,14 +258,29 @@ def file_stem(path: Path) -> str:
 
 
 def delete(slug: str) -> Path:
-    """Met le CV à la corbeille (corbeille/, hors du dépôt) ; rend son nouvel emplacement."""
-    if slug == BASE_SLUG:
-        raise ValueError("La version classique ne se supprime pas.")
+    """Met le CV à la corbeille (corbeille/, hors du dépôt) ; rend son nouvel emplacement.
+
+    Le dernier CV classique ne se supprime pas. Supprimer la première version (``base``)
+    met à sa place le CV classique modifié le plus récemment : ``base`` existe toujours.
+    """
     path = folder(slug)
+    others = [s for s in bases() if s != slug]
+    if load_meta(path).kind == "base" and not others:
+        raise ValueError("C'est ton seul CV classique : il ne se supprime pas.")
     TRASH_DIR.mkdir(parents=True, exist_ok=True)
     stamp = now().strftime("%Y%m%d-%H%M%S")
     target = TRASH_DIR / f"{slug}-{stamp}"
+    if slug != BASE_SLUG:
+        shutil.move(str(path), target)
+        return target
+    heir = max(others, key=lambda s: load_meta(folder(s)).updated_at)
+    heir_path = folder(heir)
     shutil.move(str(path), target)
+    shutil.move(str(heir_path), str(Path(BASE_DIR)))
+    # Les CV ciblés faits à partir de lui suivent son nouvel identifiant.
+    for other, meta in list_all()[1:]:
+        if meta.source == heir:
+            save_meta(folder(other), meta.model_copy(update={"source": BASE_SLUG}))
     return target
 
 

@@ -57,6 +57,8 @@ def list_cvs() -> list[CVSummary]:
 class NewCV(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     source: str = cv_store.BASE_SLUG
+    # « base » : un CV classique de plus (copie d'un autre), pas une candidature.
+    kind: Literal["base", "cv"] = "cv"
 
 
 class Rename(BaseModel):
@@ -69,7 +71,7 @@ class Rename(BaseModel):
 async def create_cv(new: NewCV) -> CVSummary:
     """Un nouveau CV copié d'un autre (la version classique par défaut), compilé."""
     _folder(new.source)
-    slug = cv_store.create(new.name, new.source)
+    slug = cv_store.create(new.name, new.source, new.kind)
     await compiler.compile(slug)
     return summary(slug)
 
@@ -293,11 +295,11 @@ async def put_source(slug: str, body: SourceIn) -> SourceResult:
         content, style = cv_store.load(path)
         if body.tex == render(content, style):
             return SourceResult(mode="visual", compile=await compile_now(slug))
-        if slug == cv_store.BASE_SLUG:
+        if meta.kind == "base":
             raise HTTPException(
                 409,
-                "La version classique reste en mode visuel : elle sert de modèle aux autres CV. "
-                "Duplique-la pour modifier son code LaTeX.",
+                "Un CV classique reste en mode visuel : il sert de modèle aux autres CV. "
+                "Duplique-le pour modifier son code LaTeX.",
             )
     (path / cv_store.TEX).write_text(body.tex, encoding="utf-8")
     cv_store.touch(path, mode="manual")

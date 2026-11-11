@@ -38,6 +38,9 @@ const byText = (selector, text) => `[...document.querySelectorAll('${selector}')
 const click = (js) => browser.evaluate(`(() => { const el = ${js}; if (!el) throw new Error('introuvable : ' + ${JSON.stringify(js)}); el.click(); return true })()`)
 const type = (js, text) =>
   browser.evaluate(`(() => { const el = ${js}; const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set; set.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', {bubbles: true})); return true })()`)
+// Un menu Radix s'ouvre au pointeur, pas au simple clic.
+const press = (js) =>
+  browser.evaluate(`(() => { const el = ${js}; if (!el) throw new Error('introuvable : ' + ${JSON.stringify(js)}); el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); return true })()`)
 const bodyHas = (text) => `document.body.innerText.includes(${JSON.stringify(text)})`
 const labelled = (label) => `[...document.querySelectorAll('label')].find(l => l.firstChild?.textContent?.trim() === ${JSON.stringify(label)})?.querySelector('input, textarea')`
 const base = async () => (await (await fetch(`${API}/api/cvs/base`)).json()).content
@@ -128,7 +131,7 @@ try {
   await click(byText('[role=radio]', 'Rubriques'))
 
   await click(byText('button', 'Valider ce CV'))
-  await browser.waitFor(bodyHas('Ton CV de base est prêt'), 30000)
+  await browser.waitFor(bodyHas('Ton CV classique est prêt'), 30000)
   const imported = await base()
   const status = await (await fetch(`${API}/api/welcome`)).json()
   check(imported.header.headline === 'Data Science & IA (relu)' && imported.header.photo === 'photo.jpg' && !status.show, 'CV validé : retouche gardée, photo reprise, accueil refermé')
@@ -141,10 +144,16 @@ try {
   await browser.waitFor(`location.hash === '#/cv/base'`, 5000)
   check(true, '« Ajuster le style » ouvre le CV de base')
 
-  // ─── Saisie à la main, rouverte par « Remplacer » ───
-  await browser.waitFor(byText('button', 'Remplacer'), 10000)
-  await click(byText('button', 'Remplacer'))
-  await browser.waitFor(bodyHas('Commençons par ton CV de base.'), 5000)
+  // ─── Saisie à la main, par « Remplacer par un autre… » du menu de ce CV classique ───
+  const baseMenu = (name) => `document.querySelector('button[aria-label="Menu de ${name}"]')`
+  const menuItem = (text) => `[...document.querySelectorAll('[role=menuitem]')].find(i => i.textContent.includes(${JSON.stringify(text)}))`
+  const baseNames = `[...document.querySelectorAll('button[aria-label^="Menu de "]')].map(b => b.getAttribute('aria-label').slice(8))`
+  await browser.waitFor(baseMenu('Version classique'), 10000)
+  await press(baseMenu('Version classique'))
+  await browser.waitFor(menuItem('Remplacer par un autre'), 5000)
+  await click(menuItem('Remplacer par un autre'))
+  await browser.waitFor(bodyHas('Remplacer « Version classique »'), 5000)
+  check(!(await browser.evaluate(bodyHas("Partir de l'exemple"))), 'remplacer un CV classique : sans « Partir de l’exemple »')
   await click(byText('button', 'Le remplir à la main'))
   await browser.waitFor(labelled('Nom et prénom'), 10000)
   await type(labelled('Nom et prénom'), 'Alex Martin')
@@ -160,13 +169,54 @@ try {
   await type(`[...document.querySelectorAll('textarea')].pop()`, 'Course à pied\nPiano')
   await sleep(300)
   await click(byText('button', 'Terminer mon CV'))
-  await browser.waitFor(bodyHas('Ton CV de base est prêt'), 30000)
+  await browser.waitFor(bodyHas('Ton CV classique est prêt'), 30000)
   const manual = await base()
   const sections = Object.fromEntries(manual.sections.map((s) => [s.id, s]))
   check(
     manual.header.name === 'Alex Martin' && manual.header.contact_lines[0][0].text === 'Nantes, France' && sections.formation.visible && sections.formation.items.length === 1 && !sections.projets.visible && sections['centres-interet'].items.length === 2,
     'saisie à la main : CV créé, rubriques vides masquées',
   )
+
+  check(await browser.evaluate(bodyHas('Il remplace « Version classique »')), 'message : il remplace ce CV classique')
+  await click(byText('button', 'Ajuster le style'))
+  await browser.waitFor(`location.hash === '#/cv/base'`, 5000)
+
+  // ─── Un CV classique de plus : « + Ajouter », saisie à la main ───
+  await click(`[...document.querySelectorAll('aside button')].find(b => b.textContent.trim() === 'Ajouter')`)
+  await browser.waitFor(bodyHas('Un nouveau CV classique'), 5000)
+  await type(`document.querySelector('input[placeholder="CV Chef de projet"]')`, 'CV Anglais')
+  await click(byText('[role=radio]', 'Le remplir à la main'))
+  await click(byText('button', 'Continuer'))
+  await browser.waitFor(labelled('Nom et prénom'), 10000)
+  await type(labelled('Nom et prénom'), 'Alex Martin')
+  await click(`[...document.querySelectorAll('nav[aria-label="Sections"] button')].find(b => b.textContent.includes('Langues et intérêts'))`)
+  await browser.waitFor(bodyHas('Terminer mon CV'), 5000)
+  await click(byText('button', 'Terminer mon CV'))
+  await browser.waitFor(bodyHas("« CV Anglais » s'ajoute à tes CV classiques"), 30000)
+  const all = await (await fetch(`${API}/api/cvs`)).json()
+  const bases = all.filter((cv) => cv.meta.kind === 'base')
+  check(bases.length === 2 && (await base()).header.name === 'Alex Martin', 'nouveau CV classique ajouté, la première version garde son contenu')
+  await click(byText('button', 'Ajuster le style'))
+  await browser.waitFor(`location.hash === '#/cv/cv-anglais'`, 10000)
+  await browser.waitFor(`${baseNames}.length === 2`, 10000)
+  check(true, 'deux CV classiques dans la barre de gauche, le nouveau ouvert')
+
+  // Copie, passage de l'un à l'autre, puis corbeille.
+  await press(baseMenu('CV Anglais'))
+  await browser.waitFor(menuItem('Dupliquer'), 5000)
+  await click(menuItem('Dupliquer'))
+  await browser.waitFor(`${baseNames}.includes('CV Anglais (copie)')`, 15000)
+  await click(`[...document.querySelectorAll('aside button')].find(b => b.textContent.includes('Version classique') && !b.getAttribute('aria-label'))`)
+  await browser.waitFor(`location.hash === '#/cv/base'`, 5000)
+  check(true, 'copie ajoutée ; clic sur un autre CV classique : il s’ouvre')
+  await press(baseMenu('CV Anglais (copie)'))
+  await browser.waitFor(menuItem('Supprimer'), 5000)
+  await click(menuItem('Supprimer'))
+  await browser.waitFor(byText('button', 'Mettre à la corbeille'), 5000)
+  await click(byText('button', 'Mettre à la corbeille'))
+  await browser.waitFor(`${baseNames}.length === 2 && !${baseNames}.includes('CV Anglais (copie)')`, 10000)
+  check(true, 'CV classique mis à la corbeille, les autres restent')
+  await browser.screenshot(`${out}/cv-classiques.png`)
 
   // ─── Réglages : la clé se supprime sans ouvrir .env ───
   await browser.goto(`${APP}/#/settings`)

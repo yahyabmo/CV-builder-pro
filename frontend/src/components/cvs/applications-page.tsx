@@ -13,6 +13,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { lastBase } from '@/lib/bases'
 import { company, lateText, monogram, nextStep, position, STATUS, STATUS_ORDER, where } from '@/lib/applications'
 import type { ApplicationStatus, CVSummary } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -138,7 +139,7 @@ export function ApplicationsPage({ cvs, onOpen, onTarget, refresh }: Application
                 className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
               />
             </label>
-            <Button variant="outline" className="h-9 gap-1.5" onClick={() => setCreating({ source: 'base', name: '' })}>
+            <Button variant="outline" className="h-9 gap-1.5" onClick={() => setCreating({ source: lastBase(cvs), name: '' })}>
               <FilePlus2 className="size-4" /> Nouveau CV
             </Button>
             <Button className="h-9 gap-1.5" onClick={onTarget}>

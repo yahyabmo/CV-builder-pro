@@ -26,6 +26,8 @@ class CVSummary(BaseModel):
 class CVDetail(CVSummary):
     content: CVContent
     style: CVStyle
+    # La forme vient du PDF d'origine (clone.json) : l'onglet Style ne s'y applique pas.
+    cloned: bool = False
 
 
 class LatexErrorOut(BaseModel):

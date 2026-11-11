@@ -14,7 +14,11 @@ Règles absolues :
   nommé comme la rubrique du CV.
 - Les coordonnées vont dans `contacts`, une par élément : ville, téléphone,
   email, liens, permis, mobilité.
-- Une ligne qui n'entre dans aucune rubrique va dans `unplaced`, telle quelle.
+- `titles` : pour chaque rubrique remplie, son titre tel qu'écrit dans le CV,
+  casse comprise (« Parcours professionnel », « COMPÉTENCES CLÉS »).
+- Une rubrique qui n'a pas sa place ici (Certifications, Publications, Prix,
+  Permis…) va dans `others`, avec son titre et ses lignes telles qu'écrites.
+- Une ligne isolée qui n'entre dans aucune rubrique va dans `unplaced`, telle quelle.
 
 ---message---
 # Texte du CV

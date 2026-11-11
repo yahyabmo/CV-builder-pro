@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from app import paths
 from app.paths import FONTS_DIR
 
 STYLES = {"regular": "Regular", "bold": "Bold", "italic": "Italic", "bold_italic": "BoldItalic"}
@@ -38,7 +39,10 @@ class UnknownFont(ValueError):
 def families() -> dict[str, FontFamily]:
     """Les familles complètes (quatre styles présents), par identifiant."""
     found: dict[str, FontFamily] = {}
-    for manifest in sorted(FONTS_DIR.glob("*/font.json")):
+    manifests = sorted(FONTS_DIR.glob("*/font.json")) + sorted(
+        paths.EXTRA_FONTS_DIR.glob("*/font.json")
+    )
+    for manifest in manifests:
         folder = manifest.parent
         if not _ID.match(folder.name):
             continue
@@ -50,7 +54,7 @@ def families() -> dict[str, FontFamily]:
             prefix=data["prefix"],
             folder=folder,
         )
-        if all(family.file(style).is_file() for style in STYLES):
+        if family.id not in found and all(family.file(style).is_file() for style in STYLES):
             found[family.id] = family
     return found
 

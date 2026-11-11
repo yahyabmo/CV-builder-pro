@@ -12,9 +12,12 @@ import {
   Type,
 } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
+import { Button } from '@/components/ui/button'
 import { move, SortableList, SortableRow } from '@/components/editor/sortable'
 import type { CvEditor } from '@/hooks/use-cv-editor'
+import { api } from '@/lib/api'
 import { useFonts } from '@/hooks/use-fonts'
 import { applyPalette, ELEMENTS, elementValue, fromColor, MOODS, PALETTES, samePalette, warnings, type Mood, type Palette } from '@/lib/palettes'
 import type { BlockKey, Column, CVContent, CVStyle, PaletteKey, TextStyle } from '@/lib/types'
@@ -46,6 +49,7 @@ interface StyleEditorProps {
 
 export function StyleEditor({ slug, style, content, editor }: StyleEditorProps) {
   const set = editor.updateStyle
+  if (editor.detail?.cloned) return <CloneNotice slug={slug} />
   return (
     <div className="flex flex-col gap-2.5 pb-24">
       <ThemesPanel style={style} replaceStyle={editor.replaceStyle} baseSlug={editor.detail?.meta.source ?? 'base'} />
@@ -696,3 +700,43 @@ function SectionsGroup({ content, update }: { content: CVContent; update: CvEdit
   )
 }
 
+
+/** Un CV cloné : sa forme vient de son PDF d'origine, les réglages de style ne s'y appliquent pas. */
+function CloneNotice({ slug }: { slug: string }) {
+  const [busy, setBusy] = useState(false)
+  const [asking, setAsking] = useState(false)
+  const leave = async () => {
+    setBusy(true)
+    try {
+      await api.dropClone(slug)
+      window.location.reload()
+    } catch (error) {
+      setBusy(false)
+      toast.error('Impossible', { description: (error as Error).message })
+    }
+  }
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-card surface p-4">
+      <span className="text-[14px] font-semibold">Ce CV garde la forme de ton PDF</span>
+      <p className="text-[13px] text-muted-foreground">
+        Sa mise en page est un clone de ton PDF d'origine : colonnes, fonds, polices, tailles et écarts. Tu modifies son contenu comme
+        d'habitude ; la forme suit. Les réglages de style (palettes, polices, colonnes) concernent la mise en page de l'appli.
+      </p>
+      {asking ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted p-3 text-[12.5px]">
+          <span className="flex-1">Le CV prend la mise en page de l'appli. Pour retrouver le clone, il faudra réimporter ton PDF.</span>
+          <Button size="sm" variant="destructive" disabled={busy} onClick={() => void leave()}>
+            Passer au style de l'appli
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
+            Garder le clone
+          </Button>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" className="self-start" onClick={() => setAsking(true)}>
+          Passer au style de l'appli…
+        </Button>
+      )}
+    </div>
+  )
+}

@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import unicodedata
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from app.latex.render import render
 from app.models.content import CVContent
@@ -27,6 +27,11 @@ META = "meta.json"
 TEX = "main.tex"
 PDF = "cv.pdf"
 THUMB = "miniature.png"
+# La mise en page clonée du PDF d'origine : quand elle existe, le .tex vient d'elle.
+CLONE = "clone.json"
+
+if TYPE_CHECKING:
+    from app.services.clone.model import CloneLayout
 BASE_SLUG = "base"
 
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
@@ -95,11 +100,35 @@ def touch(path: Path, **changes: object) -> CVMeta:
     return meta
 
 
-def write_tex(path: Path) -> Path:
-    """Régénère main.tex depuis content.json et style.json."""
+def load_clone(path: Path) -> "CloneLayout | None":
+    from app.services.clone.model import CloneLayout
+
+    file = path / CLONE
+    if not file.is_file():
+        return None
+    try:
+        return CloneLayout.model_validate_json(file.read_text(encoding="utf-8"))
+    except ValueError:
+        return None
+
+
+def generated(path: Path) -> str:
+    """Le .tex tiré du contenu : la forme clonée du PDF d'origine, sinon le gabarit et le style."""
     content, style = load(path)
+    layout = load_clone(path)
+    if layout is not None:
+        from app.services.clone import tex as clone_tex
+
+        photo = content.header.photo
+        image = photo if photo and (path / photo).is_file() else None
+        return clone_tex.render(layout, content, image)
+    return render(content, style)
+
+
+def write_tex(path: Path) -> Path:
+    """Régénère main.tex depuis content.json (et style.json, ou clone.json)."""
     tex = path / TEX
-    tex.write_text(render(content, style), encoding="utf-8")
+    tex.write_text(generated(path), encoding="utf-8")
     return tex
 
 
@@ -146,6 +175,9 @@ def create(name: str, source: str, kind: Literal["base", "cv"] = "cv") -> str:
     photo = content.header.photo
     if photo and (origin / photo).is_file():
         shutil.copy2(origin / photo, target / photo)
+    # Un CV fait à partir d'un CV cloné garde sa forme.
+    if (origin / CLONE).is_file():
+        shutil.copy2(origin / CLONE, target / CLONE)
     # Une copie d'un CV en mode manuel garde son code LaTeX, et son mode (sauf un CV classique).
     manual = load_meta(origin).mode == "manual" and kind == "cv"
     if manual:

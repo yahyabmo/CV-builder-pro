@@ -205,6 +205,25 @@ class ImportedLanguage(_Out):
     level: str
 
 
+class ImportedTitle(_Out):
+    rubric: Literal[
+        "education",
+        "experience",
+        "associative",
+        "projects",
+        "skills",
+        "soft_skills",
+        "languages",
+        "interests",
+    ]
+    title: str = Field(description="Le titre de cette rubrique, tel qu'écrit dans le CV.")
+
+
+class ImportedOther(_Out):
+    title: str = Field(description="Le titre de la rubrique, tel qu'écrit dans le CV.")
+    lines: list[str] = Field(description="Ses lignes, une par élément, telles qu'écrites.")
+
+
 class ImportedCV(_Out):
     """Le contenu d'un CV lu dans un PDF, rangé dans les rubriques de l'appli."""
 
@@ -225,6 +244,14 @@ class ImportedCV(_Out):
     interests: list[str] = Field(description="Les centres d'intérêt, un par élément.")
     unplaced: list[str] = Field(
         description="Les lignes qui n'entrent dans aucune rubrique, recopiées telles quelles."
+    )
+    titles: list[ImportedTitle] = Field(
+        default_factory=list,
+        description="Le titre de chaque rubrique remplie, tel qu'écrit dans le CV.",
+    )
+    others: list[ImportedOther] = Field(
+        default_factory=list,
+        description="Les rubriques sans place ci-dessus (Certifications, Publications, Prix…).",
     )
 
 

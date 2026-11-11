@@ -150,6 +150,8 @@ export interface CVSummary {
 export interface CVDetail extends CVSummary {
   content: CVContent
   style: CVStyle
+  /** La forme vient du PDF d'origine (clone) : l'onglet Style ne s'y applique pas. */
+  cloned?: boolean
 }
 
 export interface LatexError {
@@ -710,6 +712,17 @@ export interface ImportResult {
   photo: boolean
   checks: ImportCheck[]
   counts: { skills: number; experiences: number; projects: number }
+}
+
+/** Le clone d'un CV importé : sa ressemblance avec le PDF, et ce qui en est repris. */
+export interface CloneResult {
+  available: boolean
+  ok: boolean
+  reason: string | null
+  likeness: number | null
+  fonts: { pdf: string; name: string; badge: string }[]
+  kept: string[]
+  differences: string[]
 }
 
 export interface ApplyBaseResult {

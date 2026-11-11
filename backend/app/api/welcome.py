@@ -12,16 +12,19 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from app import settings
+from app import fonts, settings
 from app.ai import llm, targeting, usage_log
 from app.ai.schemas import ImportedCV
 from app.api.cvs import compile_now
 from app.api.schemas import CompileOut
-from app.latex.compile import LatexNotInstalled, compile_tex
+from app.latex.compile import LatexNotInstalled, compile_tex, page_count
 from app.models.content import CVContent
 from app.models.meta import CVMeta, now
 from app.paths import DEMO_DIR, server_mode
 from app.services import cv_import, cv_style, library_import, photo
+from app.services.clone import build as clone_build
+from app.services.clone import likeness
+from app.services.clone import model as clone_model
 from app.storage import cv_store, library_store
 
 router = APIRouter(prefix="/api/welcome", tags=["accueil"])
@@ -60,6 +63,8 @@ class ApplyIn(BaseModel):
     # le CV classique remplacé (la première version par défaut).
     new_name: str | None = Field(default=None, max_length=120)
     target: str = cv_store.BASE_SLUG
+    # La forme du PDF clonée (calculée par /clone), au lieu du style de l'appli.
+    clone: bool = False
 
 
 class PreviewIn(BaseModel):
@@ -69,6 +74,24 @@ class PreviewIn(BaseModel):
 
 class StyleOut(BaseModel):
     findings: list[cv_style.Finding]
+
+
+class CloneFont(BaseModel):
+    pdf: str
+    name: str
+    # « identique », « mêmes largeurs » ou « proche ».
+    badge: str
+
+
+class CloneOut(BaseModel):
+    available: bool
+    ok: bool = False
+    # Pourquoi le clone n'est pas possible, ou a échoué.
+    reason: str | None = None
+    likeness: int | None = None
+    fonts: list[CloneFont] = Field(default_factory=list)
+    kept: list[str] = Field(default_factory=list)
+    differences: list[str] = Field(default_factory=list)
 
 
 class ApplyOut(BaseModel):
@@ -247,6 +270,97 @@ async def preview(import_id: str, body: PreviewIn) -> CompileOut:
     return CompileOut(ok=result.ok, pages=result.pages, seconds=round(result.seconds, 2))
 
 
+CLONE_DIR = "clone"
+
+
+def _summary(layout: clone_model.CloneLayout) -> tuple[list[str], list[str]]:
+    """Ce qui est repris à l'identique, et ce qui ne l'est pas, en phrases courtes."""
+    kept, differences = [], []
+    columns = [f for f in layout.frames if any(b.kind == "section" for b in f.blocks)]
+    if len(columns) > 1:
+        kept.append(f"{len(columns)} colonnes, aux mêmes largeurs")
+    fills = [p for p in layout.paints if p.fill and (p.x1 - p.x0) * (p.y1 - p.y0) > 4000]
+    if fills:
+        kept.append("Fonds et bandeaux de couleur")
+    if layout.photo:
+        shape = {"circle": "ronde", "rounded": "aux coins arrondis", "square": "carrée"}
+        kept.append(f"Photo {shape[layout.photo.shape]}, à sa place")
+    decos = {look.deco.kind for look in layout.looks}
+    if "rule" in decos:
+        kept.append("Filets sous les titres")
+    if "band" in decos:
+        kept.append("Titres sur bandeau de couleur")
+    same = sorted({fonts.get(f).name for f, badge in layout.fonts.values() if badge != "proche"})
+    if same:
+        kept.append("Police " + ", ".join(same))
+    kept.append("Tailles, couleurs et écarts du texte")
+    for pdf, (font_id, badge) in sorted(layout.fonts.items()):
+        if badge == "proche":
+            differences.append(
+                f"Police {pdf} : remplacée par {fonts.get(font_id).name}, la plus proche"
+            )
+    small = [p for p in layout.paints if (p.x1 - p.x0) * (p.y1 - p.y0) < 400 and p.kind != "line"]
+    if len(small) >= 3:
+        differences.append(
+            "Pastilles et barres de niveau : reprises telles quelles, elles ne suivent pas "
+            "tes modifications"
+        )
+    return kept, differences
+
+
+@router.post("/import/{import_id}/clone")
+async def clone_preview(import_id: str, body: PreviewIn) -> CloneOut:
+    """Le CV lu, dans la forme de son PDF : le clone, calé, et sa ressemblance."""
+    origin = _folder(import_id)
+    source = origin / cv_import.SOURCE
+    pages = page_count(source) or 1
+    if pages > 1:
+        return CloneOut(
+            available=False,
+            reason=f"Ton PDF a {pages} pages : le clone ne reproduit encore qu'une page. "
+            "Le style de l'appli reprend ta police, tes couleurs et tes colonnes.",
+        )
+    folder = origin / CLONE_DIR
+    folder.mkdir(exist_ok=True)
+    content = body.content.model_copy(deep=True)
+    if content.header.photo and (origin / photo.PHOTO).exists():
+        shutil.copy(origin / photo.PHOTO, folder / photo.PHOTO)
+        content.header.photo = photo.PHOTO
+    else:
+        content.header.photo = ""
+    async with _PREVIEWS[f"{import_id}/clone"]:
+        try:
+            result = await asyncio.to_thread(clone_build.clone_into, folder, source, content)
+        except LatexNotInstalled as error:
+            raise HTTPException(503, str(error)) from None
+        if not result.ok:
+            return CloneOut(available=True, reason="Le clone n'a pas pu être mis en page.")
+        measured = await asyncio.to_thread(likeness.measure, source, folder / cv_store.PDF)
+    layout = cv_store.load_clone(folder)
+    if layout is None:
+        return CloneOut(available=True, reason="Le clone n'a pas pu être mis en page.")
+    kept, differences = _summary(layout)
+    return CloneOut(
+        available=True,
+        ok=True,
+        likeness=measured.score,
+        fonts=[
+            CloneFont(pdf=pdf, name=fonts.get(font_id).name, badge=badge)
+            for pdf, (font_id, badge) in sorted(layout.fonts.items())
+        ],
+        kept=kept,
+        differences=differences,
+    )
+
+
+@router.get("/import/{import_id}/clone.pdf")
+def clone_pdf(import_id: str) -> FileResponse:
+    file = _folder(import_id) / CLONE_DIR / cv_store.PDF
+    if not file.exists():
+        raise HTTPException(404, "Pas encore de clone.")
+    return FileResponse(file, media_type="application/pdf", headers={"Cache-Control": "no-store"})
+
+
 @router.get("/import/{import_id}/preview.pdf")
 def preview_pdf(import_id: str) -> FileResponse:
     file = _folder(import_id) / "apercu" / cv_store.PDF
@@ -295,6 +409,12 @@ async def apply(body: ApplyIn) -> ApplyOut:
     cv_store.save_content(base, content)
     cv_store.save_style(base, style)
     cv_store.touch(base, welcome=False)
+    # La forme du PDF, clonée à la relecture ; sinon le style de l'appli (l'ancien clone part).
+    cloned = _folder(body.import_id) / CLONE_DIR / cv_store.CLONE if body.import_id else None
+    if body.clone and cloned is not None and cloned.exists():
+        shutil.copy(cloned, base / cv_store.CLONE)
+    else:
+        (base / cv_store.CLONE).unlink(missing_ok=True)
     if new_name:
         # Le premier lancement est passé : l'accueil ne se rouvre plus sur la première version.
         main = _base()

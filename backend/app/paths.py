@@ -104,6 +104,8 @@ IMPORTS_DIR = UserDir("imports")
 RULES_DIR = UserDir("rules")
 DEMO_DIR = ROOT / "demo"
 FONTS_DIR = ROOT / "fonts"
+# Polices ajoutées par le clonage d'un CV (téléchargées de Google Fonts), communes à tous.
+EXTRA_FONTS_DIR = DATA_DIR / "polices"
 PROMPTS_DIR = ROOT / "prompts"
 # L'interface construite (npm run build), servie par le serveur avec « make start ».
 WEB_DIR = Path(os.environ.get("CVB_WEB") or ROOT / "frontend" / "dist")

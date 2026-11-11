@@ -115,19 +115,27 @@ try {
   check(true, 'relecture : titre retouché, expérience ouverte en édition')
   await browser.screenshot(`${out}/relecture.png`)
 
-  // Le style repéré dans le PDF : police, couleurs, colonnes…, et l'aperçu qui les suit.
-  await click(byText('[role=radio]', 'Style'))
+  // La forme : le clone de ton PDF par défaut, sa note, ton PDF et lui superposés.
+  await click(byText('[role=radio]', 'Forme'))
+  await browser.waitFor(bodyHas('Ressemblance avec ton PDF'), 120000)
+  const likeness = await browser.evaluate(`Number(document.querySelector('[aria-label^="Ressemblance"]').getAttribute('aria-label').match(/\\d+/)[0])`)
+  await browser.waitFor(`document.querySelectorAll('[aria-label="Ton PDF et le clone superposés"] canvas').length >= 2`, 30000)
+  check(likeness >= 80 && (await browser.evaluate(`!!document.querySelector('input[aria-label="Part du clone affichée"]')`)), `clone de ton PDF : ${likeness} % de ressemblance, curseur de comparaison`)
+  await browser.screenshot(`${out}/import-clone.png`)
+
+  // « Proche du mien » : le style repéré, élément par élément, et l'aperçu qui le suit.
+  await click(byText('[role=radio]', 'Proche du mien'))
   await browser.waitFor(bodyHas('Repéré dans ton PDF'), 15000)
   await browser.waitFor(`[...document.querySelectorAll('canvas')].length >= 2`, 30000)
   check(
     await browser.evaluate(`${bodyHas('PT Serif')} && document.querySelectorAll('input[aria-label^="Reprendre"]:checked').length >= 6`),
-    'style repéré dans le PDF : PT Serif, éléments cochés, aperçu compilé',
+    'proche du mien : PT Serif, éléments cochés, aperçu compilé',
   )
   await browser.screenshot(`${out}/import-style.png`)
-
-  await click(byText('[role=radio]', 'Aperçu'))
+  await click(byText('[role=radio]', "Style de l'appli"))
   await browser.waitFor(`document.querySelectorAll('canvas').length >= 2`, 30000)
-  check(true, "aperçu au format de l'appli compilé")
+  check(true, "style de l'appli : aperçu compilé")
+  await click(byText('[role=radio]', 'Identique au mien'))
   await click(byText('[role=radio]', 'Rubriques'))
 
   await click(byText('button', 'Valider ce CV'))
@@ -135,8 +143,8 @@ try {
   const imported = await base()
   const status = await (await fetch(`${API}/api/welcome`)).json()
   check(imported.header.headline === 'Data Science & IA (relu)' && imported.header.photo === 'photo.jpg' && !status.show, 'CV validé : retouche gardée, photo reprise, accueil refermé')
-  const baseStyle = (await (await fetch(`${API}/api/cvs/base`)).json()).style
-  check(baseStyle.fonts.main === 'PTSerif' && baseStyle.band.color === 'band' && baseStyle.columns.layout === 'two', 'style du PDF repris : PT Serif, fond de colonne, deux colonnes')
+  const source = (await (await fetch(`${API}/api/cvs/base/source`)).json()).tex
+  check(source.includes('CV cloné') && source.includes('PTSerif'), 'CV de base validé en clone : la forme du PDF, en PT Serif')
   const library = await (await fetch(`${API}/api/library`)).json()
   check(library.skills.length > 15 && library.projects.length >= 4, `bibliothèque remplie (${library.skills.length} compétences, ${library.projects.length} projets)`)
   await browser.screenshot(`${out}/accueil-fin.png`)

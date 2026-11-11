@@ -46,6 +46,7 @@ from app.models.content import (
 from app.paths import DEMO_DIR, IMPORTS_DIR
 from app.services import photo
 from app.services.library_import import split_skills
+from app.text import slugify
 
 MAX_BYTES = 10 * 1024 * 1024
 # En dessous, le PDF n'a pas de texte à lire : c'est un scan.
@@ -210,6 +211,19 @@ def _experiences(items: list) -> list[ExperienceItem]:
     ]
 
 
+# Le genre et la mise en page d'une section du CV fictif → sa rubrique dans la lecture.
+_RUBRICS = {
+    ("education", None): "education",
+    ("experience", "detailed"): "experience",
+    ("experience", "compact"): "associative",
+    ("projects", None): "projects",
+    ("skills", None): "skills",
+    ("grid", None): "soft_skills",
+    ("languages", None): "languages",
+    ("bullets", None): "interests",
+}
+
+
 def to_content(cv: ImportedCV, with_photo: bool, template: CVContent | None = None) -> CVContent:
     """Le CV lu, rangé dans les sections du CV fictif ; une section vide est masquée."""
     if template is None:
@@ -252,7 +266,26 @@ def to_content(cv: ImportedCV, with_photo: bool, template: CVContent | None = No
         section.visible = bool(section.items)
         if cv.language == "en":
             section.title = TITLES_EN.get(section.title, section.title)
+        # Le titre écrit dans le PDF, s'il a été lu : la rubrique garde son nom.
+        rubric = _RUBRICS.get((section.kind, getattr(section, "layout", None)))
+        written = next((t.title.strip() for t in cv.titles if t.rubric == rubric), "")
+        if written:
+            section.title = written
         sections.append(section)
+    # Les rubriques que l'appli n'a pas (Certifications, Prix…) : une liste chacune.
+    taken = {s.id for s in sections}
+    for other in cv.others:
+        lines = [line.strip() for line in other.lines if line.strip()]
+        if not other.title.strip() or not lines:
+            continue
+        base = slugify(other.title, "rubrique")
+        sid, n = base, 2
+        while sid in taken:
+            sid, n = f"{base}-{n}", n + 1
+        taken.add(sid)
+        sections.append(
+            BulletsSection(id=sid, title=other.title.strip(), column="right", items=lines)
+        )
     header = Header(
         name=cv.name,
         headline=cv.headline,
@@ -290,6 +323,8 @@ def _fields(cv: ImportedCV) -> list[tuple[str, str]]:
     found += [("Soft skills", s) for s in cv.soft_skills]
     found += [("Langues", f"{lang.name} {lang.level}") for lang in cv.languages]
     found += [("Centres d'intérêt", i) for i in cv.interests]
+    for other in cv.others:
+        found += [(other.title, line) for line in other.lines]
     return found
 
 

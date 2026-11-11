@@ -144,7 +144,21 @@ def locate_click(slug: str, x: float, y: float, page: int = 1) -> locate.Locatio
 def get_cv(slug: str) -> CVDetail:
     path = _folder(slug)
     content, style = cv_store.load(path)
-    return CVDetail(**summary(slug).model_dump(), content=content, style=style)
+    return CVDetail(
+        **summary(slug).model_dump(),
+        content=content,
+        style=style,
+        cloned=(path / cv_store.CLONE).is_file(),
+    )
+
+
+@router.delete("/{slug}/clone")
+async def drop_clone(slug: str) -> CompileOut:
+    """Quitte la forme clonée du PDF : le CV passe au style de l'appli (onglet Style)."""
+    path = _folder(slug)
+    (path / cv_store.CLONE).unlink(missing_ok=True)
+    cv_store.touch(path)
+    return await compile_now(slug)
 
 
 @router.put("/{slug}/content")
@@ -282,8 +296,7 @@ def get_source(slug: str) -> SourceOut:
     meta = cv_store.load_meta(path)
     if meta.mode == "manual":
         return SourceOut(tex=(path / cv_store.TEX).read_text(encoding="utf-8"), mode="manual")
-    content, style = cv_store.load(path)
-    return SourceOut(tex=render(content, style), mode="visual")
+    return SourceOut(tex=cv_store.generated(path), mode="visual")
 
 
 @router.put("/{slug}/source")
@@ -292,8 +305,7 @@ async def put_source(slug: str, body: SourceIn) -> SourceResult:
     path = _folder(slug)
     meta = cv_store.load_meta(path)
     if meta.mode == "visual":
-        content, style = cv_store.load(path)
-        if body.tex == render(content, style):
+        if body.tex == cv_store.generated(path):
             return SourceResult(mode="visual", compile=await compile_now(slug))
         if meta.kind == "base":
             raise HTTPException(

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AdminPage } from '@/components/admin/admin-page'
+import { AccessPaused } from '@/components/layout/access-paused'
 import { ApplicationsPage } from '@/components/cvs/applications-page'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -12,7 +13,7 @@ import { SettingsPage } from '@/components/settings/settings-page'
 import { TargetPage } from '@/components/target/target-page'
 import { WelcomeFlow } from '@/components/welcome/welcome-flow'
 import { useRoute, type Route } from '@/hooks/use-route'
-import { api } from '@/lib/api'
+import { ACCESS_PAUSED, api } from '@/lib/api'
 import type { CVSummary } from '@/lib/types'
 
 const LAST = 'cv-builder.selected'
@@ -41,6 +42,13 @@ export default function App() {
   const [cvs, setCvs] = useState<CVSummary[] | null>(null)
   const { route, navigate } = useRoute(initialRoute)
   const [collapsed, setCollapsed] = useState(readFolded)
+  // En ligne : l'accès de cette adresse a été retiré (son e-mail), l'appli laisse place à un écran.
+  const [paused, setPaused] = useState<string | null>(null)
+  useEffect(() => {
+    const onPaused = (event: Event) => setPaused((event as CustomEvent<string>).detail)
+    window.addEventListener(ACCESS_PAUSED, onPaused)
+    return () => window.removeEventListener(ACCESS_PAUSED, onPaused)
+  }, [])
   const toggleSidebar = () =>
     setCollapsed((current) => {
       try {
@@ -97,6 +105,7 @@ export default function App() {
 
   const openCV = (slug: string) => navigate({ view: 'cv', slug })
 
+  if (paused !== null) return <AccessPaused email={paused} />
   if (route.view === 'welcome') return <WelcomeFlow route={route} navigate={navigate} refresh={refresh} />
 
   return (

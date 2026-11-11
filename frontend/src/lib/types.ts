@@ -393,6 +393,8 @@ export interface AdminPerson {
   due: number | null
   ai_left: number | null
   ai_quota: number | null
+  /** Sur la liste de Cloudflare (peut recevoir un code) ; null : Cloudflare non relié ou illisible. */
+  cloudflare: boolean | null
 }
 
 export interface AdminPeople {

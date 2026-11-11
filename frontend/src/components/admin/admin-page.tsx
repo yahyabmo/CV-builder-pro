@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Loader2, TriangleAlert, UserPlus } from 'lucide-react'
+import { ArrowLeft, Check, Download, Loader2, RefreshCw, TriangleAlert, UserPlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -125,10 +125,11 @@ function PeopleView({ navigate }: { navigate: (route: Route) => void }) {
       </form>
 
       <div className="overflow-x-auto rounded-xl border bg-card surface">
-        <table className="w-full min-w-[760px] text-[13px]">
+        <table className="w-full min-w-[980px] text-[13px]">
           <thead>
             <tr className="border-b text-left text-[11px] tracking-wide text-muted-foreground uppercase">
               <th className="px-4 py-2.5 font-medium">Personne</th>
+              <th className="min-w-52 px-4 py-2.5 font-medium">Connexion</th>
               <th className="px-4 py-2.5 font-medium">Dernière visite</th>
               <th className="px-4 py-2.5 font-medium">CV</th>
               <th className="px-4 py-2.5 font-medium">Candidatures</th>
@@ -141,7 +142,10 @@ function PeopleView({ navigate }: { navigate: (route: Route) => void }) {
               const gone = p.removed !== null
               const open = () => navigate({ view: 'admin', email: p.email })
               return (
-                <tr key={p.email} className={cn('border-b last:border-0', gone && 'bg-muted/40 text-muted-foreground')}>
+                <tr
+                  key={p.email}
+                  className={cn('border-b last:border-0', gone && 'bg-muted/40 text-muted-foreground', mismatch(p) && 'bg-destructive/5')}
+                >
                   <td className="px-4 py-3">
                     {p.cvs !== null ? (
                       <button type="button" onClick={open} className="font-semibold text-primary hover:underline">
@@ -152,6 +156,9 @@ function PeopleView({ navigate }: { navigate: (route: Route) => void }) {
                     )}
                     {p.admin && <Pill>toi</Pill>}
                     {gone && <Pill>accès retiré</Pill>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Connection person={p} busy={busy !== null} onRetry={() => void act('sync', () => api.adminSync(), 'Liste envoyée à Cloudflare')} />
                   </td>
                   <td className="px-4 py-3">{p.last_seen ? sinceNow(p.last_seen) : p.admin ? '–' : 'jamais connecté'}</td>
                   <td className="px-4 py-3 tabular-nums">{p.cvs ?? '–'}</td>
@@ -233,6 +240,44 @@ function PeopleView({ navigate }: { navigate: (route: Route) => void }) {
         </AlertDialogContent>
       </AlertDialog>
     </Shell>
+  )
+}
+
+// Cloudflare ne dit pas la même chose que l'appli : la personne ne peut pas entrer (ou le peut encore).
+const mismatch = (p: AdminPerson) => p.cloudflare !== null && p.cloudflare === (p.removed !== null)
+
+/** Ce que Cloudflare laisse faire à cette adresse, relu après chaque changement. */
+function Connection({ person, busy, onRetry }: { person: AdminPerson; busy: boolean; onRetry: () => void }) {
+  if (person.cloudflare === null) return <span className="text-muted-foreground">–</span>
+  const gone = person.removed !== null
+  const retry = (
+    <Button variant="outline" size="sm" className="h-7 gap-1 self-start px-2 text-[12px]" disabled={busy} onClick={onRetry}>
+      <RefreshCw className="size-3" /> Réessayer
+    </Button>
+  )
+  if (mismatch(person)) {
+    return (
+      <div className="flex max-w-60 flex-col gap-1.5">
+        <span className="inline-flex items-center gap-1 self-start rounded-full bg-destructive/10 px-2 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-destructive">
+          <TriangleAlert className="size-3" /> {gone ? 'Encore chez Cloudflare' : 'Absent chez Cloudflare'}
+        </span>
+        <span className="text-[11.5px] text-muted-foreground">
+          {gone ? 'Cloudflare lui envoie encore des codes.' : 'Pas de code de connexion tant que la liste n’est pas passée.'}
+        </span>
+        {retry}
+      </div>
+    )
+  }
+  if (gone) return <span className="text-[12px]">ne reçoit plus de code</span>
+  return (
+    <div className="flex max-w-60 flex-col gap-1">
+      <span className="inline-flex items-center gap-1 self-start rounded-full bg-status-offer-soft px-2 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-status-offer">
+        <Check className="size-3" /> Peut recevoir le code
+      </span>
+      {!person.last_seen && !person.admin && (
+        <span className="text-[11.5px] text-muted-foreground">Code pas reçu ? Courrier indésirable, expéditeur Cloudflare.</span>
+      )}
+    </div>
   )
 }
 

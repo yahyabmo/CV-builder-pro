@@ -102,8 +102,8 @@ def _token(scope: Scope) -> str | None:
     return None
 
 
-async def _refuse(send: Send, message: str, status: int = 401) -> None:
-    body = json.dumps({"detail": message}, ensure_ascii=False).encode()
+async def _refuse(send: Send, message: str, status: int = 401, **extra: str) -> None:
+    body = json.dumps({"detail": message, **extra}, ensure_ascii=False).encode()
     await send(
         {
             "type": "http.response.start",
@@ -143,7 +143,10 @@ class AccessMiddleware:
         # Retirée par l'administrateur : coupée tout de suite, même si Cloudflare la laisse
         # encore passer jusqu'à la fin de sa session.
         if not people.allowed(email):
-            await _refuse(send, "Ton accès a été retiré. Demande à Yahya.", 403)
+            # « paused » : l'interface montre l'écran « Ton accès est en pause ».
+            await _refuse(
+                send, "Ton accès a été retiré. Demande à Yahya.", 403, code="paused", email=email
+            )
             return
         people.seen(email)
         with as_user(email):

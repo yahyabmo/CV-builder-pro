@@ -44,6 +44,8 @@ class PersonOut(BaseModel):
     due: int | None
     ai_left: int | None
     ai_quota: int | None
+    # Sur la liste de Cloudflare (peut recevoir un code) ; None : Cloudflare non relié ou illisible.
+    cloudflare: bool | None = None
 
 
 class PeopleOut(BaseModel):
@@ -91,10 +93,21 @@ async def _relay(email: str | None) -> dict:
         return {}
 
 
+async def _members() -> tuple[set[str] | None, str | None]:
+    try:
+        return await asyncio.to_thread(people.members), None
+    except people.SyncError as error:
+        return None, f"{error}. L'état de connexion n'est pas à jour."
+
+
 async def _list(warning: str | None = None) -> PeopleOut:
     known = people.load()
     emails = sorted(set(known) | people.admins())
-    answers = await asyncio.gather(*(_relay(e) for e in emails))
+    # Relu après chaque changement : on voit si Cloudflare a vraiment pris la liste.
+    (members, unread), answers = await asyncio.gather(
+        _members(), asyncio.gather(*(_relay(e) for e in emails))
+    )
+    warning = warning or unread
     out = []
     for email, answer in zip(emails, answers, strict=True):
         person = known.get(email)
@@ -111,6 +124,7 @@ async def _list(warning: str | None = None) -> PeopleOut:
                 due=due,
                 ai_left=answer.get("reste_jour"),
                 ai_quota=answer.get("quota_jour"),
+                cloudflare=None if members is None else email in members,
             )
         )
     first = next((a for a in answers if a), {})
@@ -140,6 +154,12 @@ async def list_people() -> PeopleOut:
 async def invite(body: InviteIn) -> PeopleOut:
     email = _email(body.email)
     people.invite(email)
+    return await _list(await _synced())
+
+
+@router.post("/people/sync")
+async def resync() -> PeopleOut:
+    """« Réessayer » : réécrit le groupe Cloudflare avec la liste de l'appli."""
     return await _list(await _synced())
 
 

@@ -117,6 +117,8 @@ def active() -> list[str]:
 
 
 def invite(email: str) -> None:
+    # Une personne réinvitée : sa prochaine visite est notée tout de suite.
+    _last_write.pop(email, None)
     with _lock:
         people = load()
         person = people.get(email)
@@ -137,6 +139,7 @@ def remove(email: str) -> None:
 
 
 def forget(email: str) -> None:
+    _last_write.pop(email, None)
     with _lock:
         people = load()
         people.pop(email, None)
@@ -152,15 +155,40 @@ def cloudflare_ready() -> bool:
     return all(os.environ.get(k) for k in ("CF_API_TOKEN", "CF_ACCOUNT_ID", "CF_ACCESS_GROUP_ID"))
 
 
-def sync() -> None:
-    """Réécrit le groupe Access avec la liste active. Sans réglages Cloudflare : rien."""
-    if not cloudflare_ready():
-        return
+def _group() -> tuple[str, dict[str, str]]:
     url = (
         f"{API}/accounts/{os.environ['CF_ACCOUNT_ID']}/access/groups/"
         f"{os.environ['CF_ACCESS_GROUP_ID']}"
     )
-    headers = {"authorization": f"Bearer {os.environ['CF_API_TOKEN']}"}
+    return url, {"authorization": f"Bearer {os.environ['CF_API_TOKEN']}"}
+
+
+def members() -> set[str] | None:
+    """Les adresses que Cloudflare laisse recevoir un code ; None sans réglages Cloudflare."""
+    if not cloudflare_ready():
+        return None
+    url, headers = _group()
+    try:
+        with httpx.Client(timeout=20, headers=headers) as client:
+            answer = client.get(url)
+            answer.raise_for_status()
+            include = answer.json()["result"].get("include") or []
+    except (httpx.HTTPError, KeyError, ValueError, AttributeError) as error:
+        raise SyncError(f"Cloudflare n'a pas pu être relu ({type(error).__name__})") from None
+    return {
+        str(rule["email"]["email"]).strip().lower()
+        for rule in include
+        if isinstance(rule, dict)
+        and isinstance(rule.get("email"), dict)
+        and rule["email"].get("email")
+    }
+
+
+def sync() -> None:
+    """Réécrit le groupe Access avec la liste active. Sans réglages Cloudflare : rien."""
+    if not cloudflare_ready():
+        return
+    url, headers = _group()
     try:
         with httpx.Client(timeout=20, headers=headers) as client:
             current = client.get(url)

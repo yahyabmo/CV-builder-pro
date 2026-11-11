@@ -373,3 +373,87 @@ def test_cloudflare_group_gets_the_active_list(
         "carla@example.com",
         ADMIN,
     ]
+
+
+class FakeCloudflare:
+    """Le groupe Access : GET le rend, PUT le remplace (ou échoue sur commande)."""
+
+    def __init__(self) -> None:
+        self.include: list[dict[str, Any]] = []
+        self.refuse_put = False
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"result": {"name": "G", "include": self.include}})
+        if self.refuse_put:
+            return httpx.Response(500, json={"success": False})
+        self.include = json.loads(request.content)["include"]
+        return httpx.Response(200, json={"result": {}})
+
+
+@pytest.fixture
+def cloudflare(server: Path, monkeypatch: pytest.MonkeyPatch) -> FakeCloudflare:
+    monkeypatch.setenv("CF_API_TOKEN", "jeton-essai")
+    monkeypatch.setenv("CF_ACCOUNT_ID", "compte")
+    monkeypatch.setenv("CF_ACCESS_GROUP_ID", "groupe")
+    fake = FakeCloudflare()
+    real = httpx.Client
+    monkeypatch.setattr(
+        people.httpx,
+        "Client",
+        lambda *a, **k: real(*a, transport=httpx.MockTransport(fake.handler), **k),
+    )
+    return fake
+
+
+def _state(answer: httpx.Response, email: str) -> bool | None:
+    return next(p["cloudflare"] for p in answer.json()["people"] if p["email"] == email)
+
+
+def test_admin_sees_whether_cloudflare_took_the_address(cloudflare: FakeCloudflare) -> None:
+    client = TestClient(app)
+    admin = as_(ADMIN)
+    out = client.post("/api/admin/people", headers=admin, json={"email": "dana@example.com"})
+    assert _state(out, "dana@example.com") is True and out.json()["warning"] is None
+
+    # Cloudflare refuse la liste : l'appli le voit en relisant le groupe.
+    cloudflare.refuse_put = True
+    out = client.post("/api/admin/people", headers=admin, json={"email": "eli@example.com"})
+    assert _state(out, "eli@example.com") is False
+    assert "Cloudflare" in out.json()["warning"]
+
+    # « Réessayer » une fois Cloudflare revenu.
+    cloudflare.refuse_put = False
+    out = client.post("/api/admin/people/sync", headers=admin)
+    assert _state(out, "eli@example.com") is True
+    assert (
+        client.post("/api/admin/people/sync", headers=as_("alice@example.com")).status_code == 403
+    )
+
+
+def test_without_cloudflare_the_state_is_unknown(server: Path) -> None:
+    out = TestClient(app).get("/api/admin/people", headers=as_(ADMIN))
+    assert {p["cloudflare"] for p in out.json()["people"]} == {None}
+
+
+def test_a_removed_person_gets_the_pause_screen(server: Path) -> None:
+    client = TestClient(app)
+    client.delete("/api/admin/people/bob@example.com", headers=as_(ADMIN))
+    answer = client.get("/api/me", headers=as_("bob@example.com"))
+    assert answer.status_code == 403
+    assert answer.json()["code"] == "paused"
+    assert answer.json()["email"] == "bob@example.com"
+
+
+def test_reinvited_after_erase_gets_in_and_is_seen(server: Path) -> None:
+    client = TestClient(app)
+    admin = as_(ADMIN)
+    dana = as_("dana@example.com")
+    client.post("/api/admin/people", headers=admin, json={"email": "dana@example.com"})
+    assert client.get("/api/cvs", headers=dana).status_code == 200
+    client.delete("/api/admin/people/dana@example.com", headers=admin)
+    client.delete("/api/admin/people/dana@example.com/data", headers=admin)
+    client.post("/api/admin/people", headers=admin, json={"email": "dana@example.com"})
+    assert client.get("/api/cvs", headers=dana).status_code == 200
+    # La visite d'après la réinvitation est notée, même dans les 5 minutes.
+    assert people.load()["dana@example.com"].last_seen is not None

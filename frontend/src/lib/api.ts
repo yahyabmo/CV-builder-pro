@@ -46,6 +46,9 @@ import type {
   AdminPersonDetail,
 } from './types'
 
+/** Évènement de fenêtre : la personne connectée n'a plus accès (détail : son e-mail). */
+export const ACCESS_PAUSED = 'cvb:access-paused'
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -79,10 +82,18 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
   }
   if (!response.ok) {
     let detail: unknown = response.statusText
+    let body: { detail?: unknown; code?: string; email?: string } = {}
     try {
-      detail = ((await response.json()) as { detail?: unknown }).detail
+      body = (await response.json()) as typeof body
+      detail = body.detail
     } catch {
       /* réponse sans JSON */
+    }
+    // En ligne, l'administrateur a retiré l'accès : l'appli montre l'écran « accès en pause ».
+    // La demande reste sans réponse : l'écran remplace l'appli, sans messages d'erreur derrière.
+    if (response.status === 403 && body.code === 'paused') {
+      window.dispatchEvent(new CustomEvent<string>(ACCESS_PAUSED, { detail: body.email ?? '' }))
+      return await new Promise<Response>(() => undefined)
     }
     // En ligne, la connexion Cloudflare a expiré : recharger la page ramène à la connexion.
     if (response.status === 401) throw new ApiError(401, 'Ta connexion a expiré : recharge la page pour te reconnecter.')
@@ -234,6 +245,7 @@ export const api = {
   exportUrl: '/api/export',
   adminPeople: () => request<AdminPeople>('/api/admin/people'),
   adminInvite: (email: string) => request<AdminPeople>('/api/admin/people', { method: 'POST', body: JSON.stringify({ email }) }),
+  adminSync: () => request<AdminPeople>('/api/admin/people/sync', { method: 'POST' }),
   adminRemove: (email: string) => request<AdminPeople>(`/api/admin/people/${encodeURIComponent(email)}`, { method: 'DELETE' }),
   adminErase: (email: string) => request<AdminPeople>(`/api/admin/people/${encodeURIComponent(email)}/data`, { method: 'DELETE' }),
   adminPerson: (email: string) => request<AdminPersonDetail>(`/api/admin/people/${encodeURIComponent(email)}`),

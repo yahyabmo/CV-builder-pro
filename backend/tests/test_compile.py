@@ -107,3 +107,18 @@ def test_tex_cannot_read_outside_its_folder_nor_run_commands(tmp_path: Path) -> 
     )
     assert compile_tex(tex).ok
     assert not (folder / "PIRATE").exists()
+
+
+@needs_latex
+def test_empty_education_fields_still_compile(cv_folder: Path) -> None:
+    """Une formation sans établissement (ou sans date) ne laisse pas de « \\\\ » seul."""
+    from app.storage.cv_store import load, save
+
+    content, style = load(cv_folder)
+    education = next(s for s in content.sections if s.kind == "education")
+    first = education.items[0]
+    education.items[0] = first.model_copy(update={"place": ""})
+    education.items[1] = education.items[1].model_copy(update={"place": "", "dates": ""})
+    save(cv_folder, content, style)
+    result = compile_tex(write_tex(cv_folder))
+    assert result.ok, result.errors

@@ -102,13 +102,14 @@
 \entre
 \BLOCK{endif}
 \VAR{mark("item", sec.id, loop.index0)}
-\VAR{h.fmt(b.entry_title, e(it.title))}\\
-\VAR{e(it.place)}\\
-\BLOCK{if it.description}
-\VAR{h.fmt(b.date, e(it.dates))}\\
+\BLOCK{set head = lines(h.fmt(b.entry_title, e(it.title)) if it.title.strip() else "", e(it.place), h.fmt(b.date, e(it.dates)) if it.dates.strip() else "")}
+\BLOCK{if head and it.description.strip()}
+\VAR{head}\\
 \VAR{rich(it.description)}
-\BLOCK{else}
-\VAR{h.fmt(b.date, e(it.dates))}
+\BLOCK{elif head}
+\VAR{head}
+\BLOCK{elif it.description.strip()}
+\VAR{rich(it.description)}
 \BLOCK{endif}
 
 \BLOCK{endfor}

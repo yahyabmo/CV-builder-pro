@@ -143,6 +143,16 @@ _BULLETS = {
 }
 
 
+def lines(*parts: str) -> str:
+    """Les lignes non vides, séparées par ``\\\\``.
+
+    Un champ vide (établissement d'une formation non renseigné, par exemple) ne laisse
+    pas de ``\\\\`` seul sur sa ligne : LaTeX refuserait de compiler (« There's no line
+    here to end »).
+    """
+    return "\\\\\n".join(part for part in parts if part.strip())
+
+
 def grid_rows(items: list[GridItem]) -> list[tuple[str, ...]]:
     """Les lignes d'une grille à deux cases ; une case large prend la ligne."""
     rows: list[tuple[str, ...]] = []
@@ -204,7 +214,9 @@ def environment() -> Environment:
         keep_trailing_newline=True,
         undefined=StrictUndefined,
     )
-    env.globals.update(e=escape, rich=rich, url=escape_url, pt=pt, grid_rows=grid_rows, mark=mark)
+    env.globals.update(
+        e=escape, rich=rich, url=escape_url, pt=pt, grid_rows=grid_rows, mark=mark, lines=lines
+    )
     return env
 
 

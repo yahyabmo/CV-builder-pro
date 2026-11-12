@@ -181,12 +181,21 @@
 \BLOCK{endfor}
 \BLOCK{elif sec.kind == "projects"}
 \BLOCK{for it in sec.items}
+\BLOCK{set n = loop.index0}
 \BLOCK{if not loop.first}
 \entre
 \BLOCK{endif}
 \VAR{mark("item", sec.id, loop.index0)}
 \par\VAR{h.fmt(b.project_title, e(it.title))}\BLOCK{if it.tag}\enspace{\VAR{h.size(b.project_tag)}\VAR{h.fmt(b.project_tag, "· " ~ e(it.tag))}}\BLOCK{endif}\hfill\VAR{h.fmt(b.date, e(it.date))}\par
 \VAR{rich(it.description)}
+\BLOCK{if it.bullets}
+\begin{itemize}
+\BLOCK{for bullet in it.bullets}
+\VAR{mark("bullet", sec.id, n, loop.index0)}
+    \item \VAR{rich(bullet)}
+\BLOCK{endfor}
+\end{itemize}
+\BLOCK{endif}
 \BLOCK{endfor}
 
 \BLOCK{endif}

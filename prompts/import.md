@@ -9,7 +9,12 @@ Règles absolues :
 - Le texte vient d'un PDF : deux colonnes peuvent y être entremêlées, et une
   phrase peut être coupée en fin de ligne. Recolle ce qui va ensemble, sans
   rien ajouter.
-- Une puce par élément de `bullets`, sans le signe de puce.
+- Le texte est déjà rangé par rubrique : chaque « ## Titre » ouvre une rubrique
+  du CV et tout ce qui le suit lui appartient, jusqu'au titre suivant. Ce qui
+  précède le premier titre est l'en-tête. « | » sépare deux morceaux d'une même
+  ligne (un intitulé et sa date, par exemple).
+- Une puce par élément de `bullets`, sans le signe de puce ; une puce coupée en
+  fin de ligne reste une seule puce. Les projets aussi ont leurs `bullets`.
 - Les compétences gardent leurs groupes s'il y en a ; sinon, un seul groupe
   nommé comme la rubrique du CV.
 - Les coordonnées vont dans `contacts`, une par élément : ville, téléphone,
@@ -18,7 +23,10 @@ Règles absolues :
   casse comprise (« Parcours professionnel », « COMPÉTENCES CLÉS »).
 - Une rubrique qui n'a pas sa place ici (Certifications, Publications, Prix,
   Permis…) va dans `others`, avec son titre et ses lignes telles qu'écrites.
-- Une ligne isolée qui n'entre dans aucune rubrique va dans `unplaced`, telle quelle.
+- Chaque ligne d'une rubrique va dans cette rubrique, ou dans `others` sous son
+  titre si l'application n'a pas cette rubrique. `unplaced` reste exceptionnel :
+  seulement pour une ligne de l'en-tête qui n'est ni un nom, ni un titre, ni une
+  coordonnée, ni une accroche.
 
 ---message---
 # Texte du CV

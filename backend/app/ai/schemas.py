@@ -191,7 +191,11 @@ class ImportedProject(_Out):
     title: str
     tag: str = Field(default="", description="« Projet personnel », « En binôme »… sinon vide.")
     date: str
-    description: str
+    description: str = Field(description="Le texte sous le titre, s'il n'est pas en puces.")
+    bullets: list[str] = Field(
+        default_factory=list,
+        description="Les puces sous le projet, une par élément, telles qu'écrites.",
+    )
     link: str = Field(default="", description="Le lien du projet s'il est écrit, sinon vide.")
 
 

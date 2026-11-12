@@ -1,9 +1,12 @@
 """Un CV en PDF devient la version classique, sans rien réécrire.
 
-1. ``read_pdf`` : le texte (pdftotext) et la photo la plus grande (pdfimages).
+1. ``read_pdf`` : le texte, déjà rangé par rubrique d'après la page (``clone.structure`` :
+   colonnes, titres repérés à leur style), et la photo la plus grande (pdfimages).
 2. L'IA range ce texte dans ``ImportedCV`` (prompts/import.md).
-3. ``to_content`` : les rubriques de l'appli, sur le modèle du CV fictif.
-4. ``checks`` : les mots absents du PDF, et les lignes restées sans rubrique.
+3. ``to_content`` : les rubriques de l'appli, sur le modèle du CV fictif ; puis
+   ``clone.fill.complete`` corrige d'après la page (lignes oubliées, puces coupées, gras,
+   liens).
+4. ``checks`` : les mots absents du PDF, et ce qui serait resté sans rubrique.
 
 Chaque import vit dans ``data/imports/<id>/`` : le PDF, son texte, sa photo et le
 résultat de la lecture, pour reprendre la relecture après un rechargement.
@@ -45,6 +48,9 @@ from app.models.content import (
 )
 from app.paths import DEMO_DIR, IMPORTS_DIR
 from app.services import ocr, photo
+from app.services.clone import reading as clone_reading
+from app.services.clone import scan as clone_scan
+from app.services.clone import structure as clone_structure
 from app.services.library_import import split_skills
 from app.text import slugify
 
@@ -182,6 +188,14 @@ def read_pdf(data: bytes) -> Reading:
                 "Même lu comme un scan, ce PDF n'a presque pas de texte : il est peut-être trop "
                 "flou ou trop petit. Remplis ton CV à la main, ou exporte-le en PDF."
             )
+    # Le texte pour l'IA : rangé par rubrique d'après la page (à défaut, celui de pdftotext).
+    try:
+        found = clone_structure.analyse(_pages(target, scanned))
+        structured = clone_structure.text(found)
+        if len(re.findall(r"\w+", structured)) >= 0.8 * words:
+            text = structured
+    except Exception:  # noqa: BLE001 — une page illisible : le texte brut suffit
+        pass
     (target / TEXT).write_text(text, encoding="utf-8")
     # Un scan est une seule grande image : ce n'est pas la photo du CV.
     has_photo = False if scanned else _photo(source, target)
@@ -190,6 +204,17 @@ def read_pdf(data: bytes) -> Reading:
 
 def is_scanned(import_id: str) -> bool:
     return (folder(import_id) / ocr.OCR_FILE).is_file()
+
+
+def _pages(target: Path, scanned: bool) -> list[clone_reading.Page]:
+    if scanned:
+        return clone_scan.pages(ocr.load(target) or [], target)
+    return clone_reading.read(target / SOURCE)
+
+
+def pages_of(import_id: str) -> list[clone_reading.Page]:
+    """Les pages du PDF importé, lues au point près (ou par Tesseract pour un scan)."""
+    return _pages(folder(import_id), is_scanned(import_id))
 
 
 def text_of(import_id: str) -> str:
@@ -284,6 +309,7 @@ def to_content(cv: ImportedCV, with_photo: bool, template: CVContent | None = No
                     tag=p.tag,
                     date=p.date,
                     description=p.description,
+                    bullets=[b for b in p.bullets if b.strip()],
                     link=p.link.strip() or None,
                 )
                 for p in cv.projects
@@ -344,6 +370,7 @@ def _fields(cv: ImportedCV) -> list[tuple[str, str]]:
             found += [(f"{label} {n}, puce {b}", text) for b, text in enumerate(e.bullets, 1)]
     for n, p in enumerate(cv.projects, 1):
         found.append((f"Projet {n}", f"{p.title} {p.tag} {p.date} {p.description}"))
+        found += [(f"Projet {n}, puce {b}", text) for b, text in enumerate(p.bullets, 1)]
     found += [(f"Compétences : {g.label}", f"{g.label} {' '.join(g.items)}") for g in cv.skills]
     found += [("Soft skills", s) for s in cv.soft_skills]
     found += [("Langues", f"{lang.name} {lang.level}") for lang in cv.languages]
@@ -353,8 +380,12 @@ def _fields(cv: ImportedCV) -> list[tuple[str, str]]:
     return found
 
 
-def checks(cv: ImportedCV, source: str) -> list[Check]:
-    """Chaque mot rangé doit venir du PDF ; une ligne sans rubrique est signalée."""
+def checks(cv: ImportedCV, source: str, left: list[str] | None = None) -> list[Check]:
+    """Chaque mot rangé doit venir du PDF ; ce qui reste sans rubrique est signalé.
+
+    ``left`` : les mots de la page qu'aucun champ n'écrit, après la correction d'après la
+    page ; donné, il remplace les lignes que l'IA n'avait pas su ranger.
+    """
     known = {_fold(w) for w in _words(source)}
     out = []
     for where, value in _fields(cv):
@@ -368,6 +399,18 @@ def checks(cv: ImportedCV, source: str) -> list[Check]:
                     text=f"{words} n'apparaît pas dans ton PDF. Garde-le seulement s'il est vrai.",
                 )
             )
+    if left is not None:
+        if left:
+            sample = " ".join(left[:12]) + (" …" if len(left) > 12 else "")
+            out.append(
+                Check(
+                    kind="unplaced",
+                    where="Sans rubrique",
+                    text=f"« {sample} » n'a trouvé aucune rubrique : ajoute-le à la main "
+                    "s'il compte.",
+                )
+            )
+        return out
     for line in cv.unplaced:
         if line.strip():
             out.append(

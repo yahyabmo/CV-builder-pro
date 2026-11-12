@@ -17,14 +17,16 @@ from app.ai import llm, targeting, usage_log
 from app.ai.schemas import ImportedCV
 from app.api.cvs import compile_now
 from app.api.schemas import CompileOut
-from app.latex.compile import LatexNotInstalled, compile_tex, page_count
+from app.latex.compile import LatexNotInstalled, compile_tex
 from app.models.content import CVContent
 from app.models.meta import CVMeta, now
 from app.paths import DEMO_DIR, server_mode
 from app.services import cv_import, cv_style, library_import, ocr, photo
 from app.services.clone import build as clone_build
+from app.services.clone import fill as clone_fill
 from app.services.clone import likeness
-from app.services.clone import model as clone_model
+from app.services.clone import plan as clone_plan
+from app.services.clone import report as clone_report
 from app.services.clone import scan as clone_scan
 from app.storage import cv_store, library_store
 
@@ -213,11 +215,19 @@ async def read(import_id: str) -> ImportResult:
     usage_log.record(provider.name, result.model, result.usage, "Import d'un CV")
     with_photo = cv_import.has_photo(import_id)
     content = cv_import.to_content(result.data, with_photo)
+    # La page corrige l'IA : lignes oubliées, puces coupées, gras et liens.
+    left = None
+    try:
+        pages = await asyncio.to_thread(cv_import.pages_of, import_id)
+        content, report = await asyncio.to_thread(clone_fill.complete, content, pages)
+        left = report.left
+    except Exception:  # noqa: BLE001 — sans la page, la lecture de l'IA reste telle quelle
+        pass
     out = ImportResult(
         id=import_id,
         content=content,
         photo=with_photo,
-        checks=cv_import.checks(result.data, source),
+        checks=cv_import.checks(result.data, source, left),
         counts=cv_import.counts(content),
     )
     cv_import.save_result(import_id, out.model_dump(mode="json"))
@@ -275,53 +285,50 @@ async def preview(import_id: str, body: PreviewIn) -> CompileOut:
 CLONE_DIR = "clone"
 
 
-def _summary(layout: clone_model.CloneLayout) -> tuple[list[str], list[str]]:
+def _summary(
+    layout: clone_plan.AnchoredLayout, diff: clone_report.Differences, scanned: bool
+) -> tuple[list[str], list[str]]:
     """Ce qui est repris à l'identique, et ce qui ne l'est pas, en phrases courtes."""
     kept, differences = [], []
-    columns = [f for f in layout.frames if any(b.kind == "section" for b in f.blocks)]
-    if len(columns) > 1:
-        kept.append(f"{len(columns)} colonnes, aux mêmes largeurs")
-    fills = [p for p in layout.paints if p.fill and (p.x1 - p.x0) * (p.y1 - p.y0) > 4000]
+    pages = len(layout.pages)
+    if pages > 1:
+        kept.append(f"{pages} pages, chacune à sa forme")
+    columns = len(layout.lanes[0]) if layout.lanes else 1
+    if columns > 1:
+        kept.append(f"{columns} colonnes, aux mêmes largeurs")
+    fills = [
+        p for p in layout.paints if p.fill and (p.box[2] - p.box[0]) * (p.box[3] - p.box[1]) > 4000
+    ]
     if fills:
         kept.append("Fonds et bandeaux de couleur")
     if layout.photo:
         shape = {"circle": "ronde", "rounded": "aux coins arrondis", "square": "carrée"}
         kept.append(f"Photo {shape[layout.photo.shape]}, à sa place")
-    decos = {look.deco.kind for look in layout.looks}
-    if "rule" in decos:
-        kept.append("Filets sous les titres")
-    if "band" in decos:
-        kept.append("Titres sur bandeau de couleur")
+    if layout.pictures:
+        kept.append("Icônes et images, à leur place")
     same = sorted({fonts.get(f).name for f, badge in layout.fonts.values() if badge != "proche"})
     if same:
         kept.append("Police " + ", ".join(same))
-    kept.append("Tailles, couleurs et écarts du texte")
+    if diff.lines and diff.in_place >= 0.999 and not scanned:
+        kept.append(f"Chaque ligne à sa place exacte (écart maximal {diff.max_shift:.1f} pt)")
+    elif not scanned:
+        kept.append(f"{round(100 * diff.in_place)} % des lignes à leur place exacte")
+    if not diff.restyled:
+        kept.append("Gras, italiques, couleurs et tailles du texte")
     for pdf, (font_id, badge) in sorted(layout.fonts.items()):
         if badge == "proche":
             differences.append(
                 f"Police {pdf} : remplacée par {fonts.get(font_id).name}, la plus proche"
             )
-    small = [p for p in layout.paints if (p.x1 - p.x0) * (p.y1 - p.y0) < 400 and p.kind != "line"]
-    if len(small) >= 3:
-        differences.append(
-            "Pastilles et barres de niveau : reprises telles quelles, elles ne suivent pas "
-            "tes modifications"
-        )
+    differences += clone_report.phrases(diff, scanned)
     return kept, differences
 
 
 @router.post("/import/{import_id}/clone")
 async def clone_preview(import_id: str, body: PreviewIn) -> CloneOut:
-    """Le CV lu, dans la forme de son PDF : le clone, calé, et sa ressemblance."""
+    """Le CV lu, dans la forme de son PDF : le clone, ancré mot à mot, et sa ressemblance."""
     origin = _folder(import_id)
     source = origin / cv_import.SOURCE
-    pages = page_count(source) or 1
-    if pages > 1:
-        return CloneOut(
-            available=False,
-            reason=f"Ton PDF a {pages} pages : le clone ne reproduit encore qu'une page. "
-            "Le style de l'appli reprend ta police, tes couleurs et tes colonnes.",
-        )
     folder = origin / CLONE_DIR
     folder.mkdir(exist_ok=True)
     content = body.content.model_copy(deep=True)
@@ -330,29 +337,30 @@ async def clone_preview(import_id: str, body: PreviewIn) -> CloneOut:
         content.header.photo = photo.PHOTO
     else:
         content.header.photo = ""
-    # Un scan : la page et ses mots viennent de Tesseract et de l'image.
-    scanned = ocr.load(origin) if cv_import.is_scanned(import_id) else None
-    page = words = None
+    # Un scan : les pages et leurs mots viennent de Tesseract et de l'image.
+    scanned = cv_import.is_scanned(import_id)
     async with _PREVIEWS[f"{import_id}/clone"]:
         try:
-            if scanned:
-                page = await asyncio.to_thread(clone_scan.page, scanned[0], origin)
-                words = clone_scan.words(scanned[0])
+            pages = await asyncio.to_thread(cv_import.pages_of, import_id)
             result = await asyncio.to_thread(
-                clone_build.clone_into, folder, source, content, True, page, words
+                clone_build.clone_into, folder, source, content, True, pages, scanned
             )
         except LatexNotInstalled as error:
             raise HTTPException(503, str(error)) from None
         if not result.ok:
             return CloneOut(available=True, reason="Le clone n'a pas pu être mis en page.")
+        words = [clone_scan.words(p) for p in ocr.load(origin) or []] if scanned else None
         measured = await asyncio.to_thread(likeness.measure, source, folder / cv_store.PDF, words)
+        diff = await asyncio.to_thread(
+            clone_report.compare, pages, folder / cv_store.PDF, 3.0 if scanned else 1.0
+        )
     layout = cv_store.load_clone(folder)
-    if layout is None:
+    if not isinstance(layout, clone_plan.AnchoredLayout):
         return CloneOut(available=True, reason="Le clone n'a pas pu être mis en page.")
     if scanned:
         # Un scan ne dit pas sa police : elle est devinée à ses largeurs.
         layout.fonts = {name: (font_id, "proche") for name, (font_id, _) in layout.fonts.items()}
-    kept, differences = _summary(layout)
+    kept, differences = _summary(layout, diff, scanned)
     if scanned:
         differences.insert(
             0,
@@ -429,11 +437,11 @@ async def apply(body: ApplyIn) -> ApplyOut:
     cv_store.save_style(base, style)
     cv_store.touch(base, welcome=False)
     # La forme du PDF, clonée à la relecture ; sinon le style de l'appli (l'ancien clone part).
-    cloned = _folder(body.import_id) / CLONE_DIR / cv_store.CLONE if body.import_id else None
-    if body.clone and cloned is not None and cloned.exists():
-        shutil.copy(cloned, base / cv_store.CLONE)
+    cloned = _folder(body.import_id) / CLONE_DIR if body.import_id else None
+    if body.clone and cloned is not None and (cloned / cv_store.CLONE).exists():
+        cv_store.copy_clone(cloned, base)
     else:
-        (base / cv_store.CLONE).unlink(missing_ok=True)
+        cv_store.remove_clone(base)
     if new_name:
         # Le premier lancement est passé : l'accueil ne se rouvre plus sur la première version.
         main = _base()

@@ -1,6 +1,7 @@
 """La police du clone pour chaque police du PDF.
 
 1. La même, si l'appli l'a déjà (dossier fonts/ ou polices déjà téléchargées).
+1 bis. La même, installée sur la machine (fontconfig), en fichiers statiques.
 2. La même, téléchargée de Google Fonts (familles libres : Montserrat, Poppins, Roboto…),
    en fichiers séparés par style (XeTeX gère mal les polices variables).
 3. Une police aux mêmes largeurs de lettres : les lignes se coupent aux mêmes endroits
@@ -10,6 +11,8 @@
 
 import json
 import re
+import shutil
+import subprocess
 import threading
 import unicodedata
 
@@ -140,9 +143,123 @@ def download(name: str, timeout: float = 20) -> str | None:
     return known(font_id)
 
 
+def _match(name: str, style: str) -> tuple[str, str, str] | None:
+    """Famille, style et fichier que fontconfig donne pour ``name`` dans ce style."""
+    if shutil.which("fc-match") is None:
+        return None
+    try:
+        out = subprocess.run(
+            ["fc-match", "-f", "%{family}|%{style}|%{file}", f"{name}:style={style}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    parts = out.split("|")
+    if len(parts) != 3:
+        return None
+    family = parts[0].split(",")[0]
+    return family, parts[1], parts[2]
+
+
+def system(name: str) -> str | None:
+    """La famille ``name`` installée sur la machine, recopiée en quatre fichiers statiques
+    (une police variable, mal gérée par XeTeX, est laissée de côté)."""
+    regular = _match(name, "Regular")
+    if regular is None or _key(regular[0]) != _key(name):
+        return None
+    family = regular[0]
+    font_id = _font_id(family)
+    with _lock:
+        if known(font_id):
+            return known(font_id)
+        files = {}
+        for suffix, style in (
+            ("Regular", "Regular"),
+            ("Bold", "Bold"),
+            ("Italic", "Italic"),
+            ("BoldItalic", "Bold Italic"),
+        ):
+            found = _match(family, style)
+            if found is None or _key(found[0]) != _key(family):
+                found = regular
+            path = found[2]
+            if "[" in path or not path.lower().endswith((".ttf", ".otf")):
+                return None
+            files[suffix] = path
+        folder = paths.EXTRA_FONTS_DIR / font_id
+        folder.mkdir(parents=True, exist_ok=True)
+        for suffix, path in files.items():
+            shutil.copyfile(path, folder / f"{font_id}-{suffix}.ttf")
+        (folder / "font.json").write_text(
+            json.dumps(
+                {"name": family, "category": "sans", "prefix": font_id, "source": "système"},
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return known(font_id)
+
+
+# Les polices de TeX Live (Latin Modern) : leurs fichiers OpenType, trouvés par kpsewhich.
+TEX_FONTS = {
+    "lmroman": "lmroman10",
+    "lmsans": "lmsans10",
+    "lmmono": "lmmono10",
+    "lmromancaps": "lmromancaps10",
+}
+
+
+def texlive(name: str) -> str | None:
+    """Latin Modern (les CV faits en LaTeX), recopié de TeX Live en quatre fichiers."""
+    stem = TEX_FONTS.get(_key(name))
+    if stem is None or shutil.which("kpsewhich") is None:
+        return None
+    font_id = _font_id(name)
+    with _lock:
+        if known(font_id):
+            return known(font_id)
+        files = {}
+        for suffix, style in (
+            ("Regular", "regular"),
+            ("Bold", "bold"),
+            ("Italic", "italic"),
+            ("BoldItalic", "bolditalic"),
+        ):
+            fallbacks = (f"{stem}-{style}.otf", f"{stem}-oblique.otf", f"{stem}-regular.otf")
+            for candidate in fallbacks if "italic" in style else fallbacks[::2]:
+                try:
+                    found = subprocess.run(
+                        ["kpsewhich", candidate], capture_output=True, text=True, timeout=10
+                    ).stdout.strip()
+                except (OSError, subprocess.TimeoutExpired):
+                    found = ""
+                if found:
+                    files[suffix] = found
+                    break
+        if len(files) < 4:
+            return None
+        folder = paths.EXTRA_FONTS_DIR / font_id
+        folder.mkdir(parents=True, exist_ok=True)
+        for suffix, path in files.items():
+            # Un OpenType sous le nom attendu (.ttf) : XeTeX et Pillow lisent son contenu.
+            shutil.copyfile(path, folder / f"{font_id}-{suffix}.ttf")
+        (folder / "font.json").write_text(
+            json.dumps(
+                {"name": name, "category": "serif", "prefix": font_id, "source": "TeX Live"},
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return known(font_id)
+
+
 def resolve(name: str, online: bool = True) -> tuple[str, Badge]:
     """L'identifiant de police de l'appli pour la famille ``name`` du PDF, et son badge."""
-    found = known(name)
+    found = known(name) or texlive(name) or system(name)
     if found:
         return found, "identique"
     metric = METRIC.get(_key(name))

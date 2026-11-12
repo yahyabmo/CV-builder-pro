@@ -121,6 +121,8 @@ class ProjectItem(_Model):
     tag: str = ""
     date: str
     description: str
+    # Des puces sous la description (un CV importé qui détaille ses projets ainsi).
+    bullets: list[str] = Field(default_factory=list)
     link: str | None = None
     library_id: str | None = None
 

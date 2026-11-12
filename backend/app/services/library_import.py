@@ -175,6 +175,7 @@ def from_cv(
                         context="école",
                         team=_team(item.tag),
                         description=item.description,
+                        bullets=list(item.bullets),
                         link=item.link,
                         source="cv",
                     )

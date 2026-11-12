@@ -1,0 +1,495 @@
+"""Après l'IA : le contenu lu, complété et corrigé d'après la page elle-même.
+
+L'IA range le texte dans les rubriques ; elle peut oublier une ligne, couper une puce en
+deux, perdre un gras ou un lien. La page, elle, dit tout cela sans se tromper :
+
+1. une puce que la page montre d'un seul tenant (sa suite n'a pas de signe de puce) est
+   recollée ; une puce qui en contient deux est coupée ;
+2. chaque ligne de la page qu'aucun champ n'écrit rejoint la rubrique sous le titre de
+   laquelle elle se trouve (une puce de l'entrée au-dessus, une ligne de liste, une
+   rubrique « autre » sous son titre d'origine, une coordonnée de l'en-tête) ;
+3. les mots en gras ou en italique au milieu d'un texte courant reçoivent leurs marques
+   (``**gras**``, ``__italique__``) ; les liens des coordonnées et des projets sont repris.
+
+Le compte rendu dit combien de mots de la page sont écrits par un champ, et dans la
+bonne rubrique.
+"""
+
+import re
+from dataclasses import dataclass, field
+
+from app.models.content import (
+    BulletsSection,
+    ContactItem,
+    CVContent,
+    EducationSection,
+    ExperienceSection,
+    GridItem,
+    GridSection,
+    Language,
+    LanguagesSection,
+    ProjectsSection,
+    SkillGroup,
+    SkillsSection,
+)
+from app.services.clone import fields as F
+from app.services.clone.reading import Line, Page, Word
+from app.services.clone.structure import Block, Structure, analyse, is_marker, key
+from app.text import slugify
+
+# Les champs où un mot en gras au milieu du texte garde sa marque.
+RICH = ("summary", "bullets", "description", "text", "level", "")
+
+
+@dataclass
+class Report:
+    """Ce que la page et le contenu ont en commun, mot à mot."""
+
+    words: int = 0
+    covered: int = 0
+    # Mots fixes : un titre de rubrique que l'appli n'a pas en champ (« PROFIL »).
+    fixed: int = 0
+    misplaced: int = 0
+    added: list[str] = field(default_factory=list)
+    merged: int = 0
+    split: int = 0
+    marks: int = 0
+    links: int = 0
+    left: list[str] = field(default_factory=list)
+
+    @property
+    def coverage(self) -> float:
+        return (self.covered + self.fixed) / self.words if self.words else 1.0
+
+
+def _put(content: CVContent, path: str, value: str) -> None:
+    bits = path.split(".")
+    h = content.header
+    if bits[0] in ("name", "headline", "summary") and len(bits) == 1:
+        setattr(h, bits[0], value)
+        return
+    if bits[0] == "contact":
+        items = F.contacts(content)
+        item = items[int(bits[1])]
+        if len(bits) == 3:
+            item.label = value
+        else:
+            item.text = value
+        return
+    section = next(s for s in content.sections if s.id == bits[0])
+    if bits[1] == "title":
+        section.title = value
+        return
+    n = int(bits[1])
+    if len(bits) == 2:
+        if isinstance(section.items[n], str):
+            section.items[n] = value
+        else:
+            section.items[n].text = value
+        return
+    if bits[2] == "bullets":
+        section.items[n].bullets[int(bits[3])] = value
+        return
+    setattr(section.items[n], bits[2], value)
+
+
+def _starts_with_marker(words: list[Word], line: Line, page: Page) -> bool:
+    """La ligne de ces mots commence par un signe de puce (lettre ou pastille dessinée)."""
+    first = words[0]
+    before = [w for w in line.words if w.x1 <= first.x0 + 0.1]
+    if before and is_marker(before[-1].text):
+        return True
+    if is_marker(first.text):
+        return True
+    for s in page.shapes:
+        cy = (s.box[1] + s.box[3]) / 2
+        if (
+            s.w <= 7
+            and s.h <= 7
+            and 0 < first.x0 - s.box[2] < 3 * first.size
+            and first.top - 1 <= cy <= first.bottom + 1
+        ):
+            return True
+    return False
+
+
+class _Pages:
+    def __init__(self, structure: Structure) -> None:
+        self.structure = structure
+        self.line_of: dict[int, Line] = {}
+        self.page_of: dict[int, Page] = {}
+        for page in structure.pages:
+            for line in page.lines:
+                for w in line.words:
+                    self.line_of[id(w)] = line
+                    self.page_of[id(w)] = page
+
+    def first_line(self, hit: F.Hit) -> tuple[Line, Page]:
+        w = hit.words[0]
+        return self.line_of[id(w)], self.page_of[id(w)]
+
+    def follows(self, a: F.Hit, b: F.Hit) -> bool:
+        """``b`` reprend là où ``a`` s'arrête : juste après sur la même ligne, ou au début
+        de la ligne d'en dessous."""
+        last, first = a.words[-1], b.words[0]
+        line_a, line_b = self.line_of[id(last)], self.line_of[id(first)]
+        if line_a is line_b:
+            after = line_a.words[line_a.words.index(last) + 1 :]
+            between = [w for w in after if w.x0 < first.x0 and key(w.text)]
+            return first.x0 >= last.x0 and not between
+        below = 0 <= first.top - last.bottom < 0.8 * first.size
+        starts = line_b.words[0] is first or all(
+            not key(w.text) for w in line_b.words[: line_b.words.index(first)]
+        )
+        return below and starts and first.x0 >= min(w.x0 for w in a.words) - 1.5
+
+    def marker(self, hit: F.Hit) -> bool:
+        line, page = self.first_line(hit)
+        words = [w for w in line.words if w in hit.words] or hit.words[:1]
+        return _starts_with_marker(words, line, page)
+
+
+def _bullet_lists(content: CVContent) -> list[tuple[str, list[str], callable]]:
+    """Chaque liste de puces du contenu : (préfixe de chemin, puces, de quoi la remplacer)."""
+    out = []
+    for s in content.sections:
+        if not s.visible:
+            continue
+        if s.kind in ("experience", "projects"):
+            for n, item in enumerate(s.items):
+
+                def setter(values: list[str], item=item) -> None:
+                    item.bullets = values
+
+                out.append((f"{s.id}.{n}.bullets.", list(item.bullets), setter))
+        elif s.kind == "bullets":
+
+            def setter(values: list[str], s=s) -> None:
+                s.items = values
+
+            out.append((f"{s.id}.", list(s.items), setter))
+    return out
+
+
+def _fix_bullets(content: CVContent, structure: Structure, report: Report) -> bool:
+    """Recolle les puces coupées par l'IA, coupe celles qui en contiennent deux."""
+    hits = F.Locator(structure, content).locate()
+    pages = _Pages(structure)
+    changed = False
+    for prefix, bullets, setter in _bullet_lists(content):
+        found = [hits.get(f"{prefix}{k}") for k in range(len(bullets))]
+        located = [h for h in found if h is not None]
+        if len(located) < 2 or not any(pages.marker(h) for h in located):
+            continue
+        out: list[str] = []
+        previous: F.Hit | None = None
+        for k, text in enumerate(bullets):
+            hit = found[k]
+            if (
+                hit is not None
+                and previous is not None
+                and out
+                and not pages.marker(hit)
+                and pages.follows(previous, hit)
+            ):
+                out[-1] = out[-1].rstrip() + " " + text.lstrip()
+                report.merged += 1
+                previous = F.Hit(hit.path, previous.words + hit.words)
+                changed = True
+                continue
+            # Deux puces de la page dans une seule puce du contenu : on coupe.
+            if hit is not None:
+                starts = []
+                lines: list[Line] = []
+                for w in hit.words:
+                    line = pages.line_of[id(w)]
+                    if not lines or lines[-1] is not line:
+                        lines.append(line)
+                for line in lines[1:]:
+                    words = [w for w in line.words if w in hit.words]
+                    if words and _starts_with_marker(words, line, pages.page_of[id(words[0])]):
+                        starts.append(words[0].text)
+                pieces = _split_at(text, starts)
+                if len(pieces) > 1:
+                    out += pieces
+                    report.split += len(pieces) - 1
+                    changed = True
+                    previous = hit
+                    continue
+            out.append(text)
+            previous = hit if hit is not None else previous
+        if changed:
+            setter(out)
+    return changed
+
+
+def _split_at(text: str, starts: list[str]) -> list[str]:
+    pieces = [text]
+    for start in starts:
+        last = pieces[-1]
+        position = last.find(start, 1)
+        if position <= 0:
+            continue
+        pieces[-1:] = [last[:position].rstrip(" ;,"), last[position:]]
+    return [p for p in pieces if p.strip()]
+
+
+def _paragraphs(lines: list[Line], pages: _Pages, right: float) -> list[list[Line]]:
+    """Des lignes en paragraphes : une ligne sans puce, juste sous une ligne pleine (coupée
+    au bord droit ``right``), la continue."""
+    out: list[list[Line]] = []
+    for line in lines:
+        last = out[-1][-1] if out else None
+        page = pages.page_of[id(line.words[0])]
+        if (
+            last is not None
+            and 0 <= line.top - last.bottom < 0.8 * line.size
+            and last.x1 >= right - max(3 * line.size, 15)
+            and not _starts_with_marker(line.words, line, page)
+            and abs(line.x0 - last.x0) < 2 * line.size
+        ):
+            out[-1].append(line)
+        else:
+            out.append([line])
+    return out
+
+
+def _text(lines: list[Line], only: set[int]) -> str:
+    words = [w for line in lines for w in line.words if id(w) in only or not key(w.text)]
+    while words and is_marker(words[0].text):
+        words = words[1:]
+    text = ""
+    for w in words:
+        text += ("" if w.glued or not text else " ") + w.text
+    # Une coupure en fin de ligne (« prépa- ration ») se recolle.
+    return re.sub(r"(\w)- (\w)", r"\1\2", text).strip()
+
+
+_CONTACT = re.compile(r"@|https?://|www\.|linkedin|github|\+?\d[\d .-]{7,}")
+
+
+def _add_lines(content: CVContent, structure: Structure, report: Report) -> None:
+    """Chaque ligne qu'aucun champ n'écrit rejoint la rubrique de son titre."""
+    locator = F.Locator(structure, content)
+    hits = locator.locate()
+    pages = _Pages(structure)
+    left = F.uncovered(structure, hits)
+    title_words = {id(w) for b in structure.blocks for line in b.title_lines for w in line.words}
+    left = [w for w in left if id(w) not in title_words]
+    if not left:
+        return
+    left_ids = {id(w) for w in left}
+    block_section = {id(b): sid for sid, b in locator.section_block.items()}
+    lines: list[Line] = []
+    for w in left:
+        line = pages.line_of[id(w)]
+        if not lines or lines[-1] is not line:
+            if line not in lines:
+                lines.append(line)
+    by_block: dict[int, tuple[Block | None, list[Line]]] = {}
+    for line in lines:
+        block = structure.block_of(line)
+        slot = id(block) if block is not None else 0
+        by_block.setdefault(slot, (block, []))[1].append(line)
+    for block, block_lines in by_block.values():
+        ordered = structure.order(block_lines)
+        sid = block_section.get(id(block)) if block is not None else None
+        section = next((s for s in content.sections if s.id == sid), None)
+        # Le bord droit du texte de la colonne : une ligne qui l'atteint a été coupée.
+        lane = set(structure.lane_of(ordered[0]))
+        page = pages.page_of[id(ordered[0].words[0])]
+        right = max(
+            (line.x1 for line in page.lines if set(structure.lane_of(line)) == lane),
+            default=ordered[0].x1,
+        )
+        for paragraph in _paragraphs(ordered, pages, right):
+            text = _text(paragraph, left_ids)
+            if not key(text):
+                continue
+            report.added.append(text)
+            top = paragraph[0].top
+            if block is None or (section is None and block.title is None):
+                _to_header(content, text)
+            elif section is None:
+                _to_other(content, structure, block, text)
+            else:
+                _to_section(section, text, top, hits, pages)
+
+
+def _to_header(content: CVContent, text: str) -> None:
+    h = content.header
+    if _CONTACT.search(text):
+        if not h.contact_lines:
+            h.contact_lines.append([])
+        url = None
+        if "@" in text and " " not in text.strip():
+            url = f"mailto:{text.strip()}"
+        elif re.match(r"https?://", text):
+            url = text.strip()
+        h.contact_lines[-1].append(ContactItem(text=text, url=url, bold=False))
+    elif not h.headline.strip() and len(text) <= 80:
+        h.headline = text
+    elif not h.summary.strip():
+        h.summary = text
+    else:
+        h.summary = h.summary.rstrip() + " " + text
+
+
+def _to_other(content: CVContent, structure: Structure, block: Block, text: str) -> None:
+    title = block.title_text.strip()
+    k = key(title)
+    section = next((s for s in content.sections if s.kind == "bullets" and key(s.title) == k), None)
+    if section is None:
+        taken = {s.id for s in content.sections}
+        base = slugify(title, "rubrique")
+        sid, n = base, 2
+        while sid in taken:
+            sid, n = f"{base}-{n}", n + 1
+        lanes = structure.lane_of(block.title) if block.title is not None else [0]
+        column = (
+            "left"
+            if lanes and lanes[0] == 0 and len(structure.lanes[block.page - 1]) > 1
+            else "right"
+        )
+        section = BulletsSection(id=sid, title=title, column=column, items=[])
+        content.sections.append(section)
+    section.items.append(text)
+
+
+def _to_section(section, text: str, top: float, hits: dict[str, F.Hit], pages: _Pages) -> None:
+    if isinstance(section, (ExperienceSection, ProjectsSection, EducationSection)):
+        # L'entrée juste au-dessus de la ligne.
+        tops = []
+        for n in range(len(section.items)):
+            starts = [h.top for p, h in hits.items() if p.startswith(f"{section.id}.{n}.")]
+            if starts:
+                tops.append((min(starts), n))
+        above = [(t, n) for t, n in tops if t <= top + 1]
+        n = max(above)[1] if above else len(section.items) - 1
+        if n < 0:
+            return
+        item = section.items[n]
+        if isinstance(section, EducationSection):
+            item.description = (item.description.rstrip() + " " + text).strip()
+        else:
+            item.bullets.append(text)
+        return
+    if isinstance(section, SkillsSection):
+        label, _, rest = text.partition(":")
+        if rest.strip() and len(label) <= 40:
+            section.items.append(SkillGroup(label=label.strip(), text=rest.strip()))
+        else:
+            section.items.append(SkillGroup(label="", text=text))
+    elif isinstance(section, LanguagesSection):
+        found = re.match(r"^(.+?)\s*(?::|–|—|-|\()\s*(.*?)\)?$", text)
+        if found:
+            section.items.append(
+                Language(name=found.group(1).strip(), level=found.group(2).strip())
+            )
+        else:
+            section.items.append(Language(name=text, level=""))
+    elif isinstance(section, GridSection):
+        section.items.append(GridItem(text=text, wide=len(text) > 22))
+    elif isinstance(section, BulletsSection):
+        section.items.append(text)
+
+
+def _marks_and_links(content: CVContent, structure: Structure, report: Report) -> None:
+    hits = F.Locator(structure, content).locate()
+    items = F.contacts(content)
+    for path, hit in hits.items():
+        bits = path.split(".")
+        last = bits[-1] if not bits[-1].isdigit() else (bits[-2] if len(bits) > 2 else "")
+        if bits[0] == "summary" or (
+            bits[0] not in ("name", "headline", "contact") and last in RICH
+        ):
+            text = F.get(content, path) or ""
+            marks = F.marks_for(hit.words)
+            if marks:
+                marked = F.apply_marks(text, marks)
+                if marked != text:
+                    _put(content, path, marked)
+                    report.marks += marked.count("**") // 2 + marked.count("__") // 2
+        url = next((w.url for w in hit.words if w.url), None)
+        if url is None:
+            continue
+        if bits[0] == "contact" and len(bits) == 2:
+            item = items[int(bits[1])]
+            if not item.url:
+                item.url = url
+                report.links += 1
+        elif len(bits) >= 3:
+            section = next((s for s in content.sections if s.id == bits[0]), None)
+            if isinstance(section, ProjectsSection):
+                item = section.items[int(bits[1])]
+                if not item.link:
+                    item.link = url
+                    report.links += 1
+
+
+def measure(content: CVContent, structure: Structure, report: Report | None = None) -> Report:
+    """Les mots de la page écrits par un champ du contenu, et dans la bonne rubrique."""
+    report = report or Report()
+    locator = F.Locator(structure, content)
+    hits = locator.locate()
+    words = [
+        w for page in structure.pages for line in page.lines for w in line.words if key(w.text)
+    ]
+    report.words = len(words)
+    block_of_word: dict[int, Block | None] = {}
+    for page in structure.pages:
+        for line in page.lines:
+            block = structure.block_of(line)
+            for w in line.words:
+                block_of_word[id(w)] = block
+    section_of_block = {id(b): sid for sid, b in locator.section_block.items()}
+    title_words = {
+        id(w)
+        for b in structure.blocks
+        if id(b) not in section_of_block
+        for line in b.title_lines
+        for w in line.words
+    }
+    covered = {}
+    for path, hit in hits.items():
+        for w in hit.words:
+            covered[id(w)] = path
+    report.covered = report.fixed = report.misplaced = 0
+    report.left = []
+    for w in words:
+        path = covered.get(id(w))
+        if path is None:
+            if id(w) in title_words:
+                report.fixed += 1
+            else:
+                report.left.append(w.text)
+            continue
+        report.covered += 1
+        block = block_of_word.get(id(w))
+        sid = path.split(".")[0]
+        header = sid in ("name", "headline", "summary", "contact")
+        expected = section_of_block.get(id(block)) if block is not None else None
+        if header:
+            if expected is not None and block is not None and block.title is not None:
+                report.misplaced += 1
+        elif expected is not None and expected != sid:
+            report.misplaced += 1
+    return report
+
+
+def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
+    """Le contenu complété d'après la page, et le compte rendu."""
+    content = content.model_copy(deep=True)
+    report = Report()
+    titles = lambda: [s.title for s in content.sections if s.visible]  # noqa: E731
+    structure = analyse(pages, titles())
+    if _fix_bullets(content, structure, report):
+        structure = analyse(pages, titles())
+    _add_lines(content, structure, report)
+    structure = analyse(pages, titles())
+    _marks_and_links(content, structure, report)
+    for section in content.sections:
+        if section.items:
+            section.visible = True
+    measure(content, structure, report)
+    return content, report

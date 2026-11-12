@@ -156,7 +156,7 @@ def get_cv(slug: str) -> CVDetail:
 async def drop_clone(slug: str) -> CompileOut:
     """Quitte la forme clonée du PDF : le CV passe au style de l'appli (onglet Style)."""
     path = _folder(slug)
-    (path / cv_store.CLONE).unlink(missing_ok=True)
+    cv_store.remove_clone(path)
     cv_store.touch(path)
     return await compile_now(slug)
 

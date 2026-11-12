@@ -103,12 +103,12 @@ def test_a_scan_page_gives_shapes_and_the_font(tmp_path: Path) -> None:
     scanned = _fake_scan(tmp_path)
     page = scan.page(scanned, tmp_path, online=False)
     # La police devinée aux largeurs des mots : PT Serif, celle du CV d'exemple.
-    assert page.runs[0].font == "PTSerif"
+    assert page.lines[0].words[0].font == "PTSerif"
     # Le fond de la colonne de gauche et des filets, trouvés dans l'image.
     assert any(s.kind == "rect" and (s.box[3] - s.box[1]) > 500 for s in page.shapes)
     assert sum(1 for s in page.shapes if s.kind == "line") >= 4
-    names = [r for r in page.runs if r.text == "CAMILLE LAURENT"]
-    assert names and names[0].color != "000000" and names[0].size > 18
+    names = [line for line in page.lines if line.text == "CAMILLE LAURENT"]
+    assert names and names[0].words[0].color != "000000" and names[0].size > 18
 
 
 @needs_latex
@@ -118,13 +118,11 @@ def test_a_scan_is_cloned(tmp_path: Path) -> None:
     content.header.photo = ""
     out = tmp_path / "clone"
     out.mkdir()
-    page = scan.page(scanned, tmp_path, online=False)
-    result = build.clone_into(
-        out, tmp_path / "source.pdf", content, False, page, scan.words(scanned)
-    )
+    pages = scan.pages([scanned], tmp_path, online=False)
+    result = build.clone_into(out, tmp_path / "source.pdf", content, False, pages, scanned=True)
     assert result.ok
-    measured = likeness.measure(tmp_path / "source.pdf", out / "cv.pdf", scan.words(scanned))
-    assert measured.score >= 75, measured
+    measured = likeness.measure(tmp_path / "source.pdf", out / "cv.pdf", [scan.words(scanned)])
+    assert measured.score >= 85, measured
 
 
 def test_without_tesseract_a_scan_is_refused_with_the_command(

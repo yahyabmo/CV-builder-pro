@@ -229,6 +229,7 @@ function FromLibrary({ items, edit }: { items: ProjectItem[]; edit: EditItems<Pr
                   tag: project.team ? TEAM_TAG[project.team] : '',
                   date: project.date,
                   description: project.description,
+                  bullets: [],
                   link: project.link,
                   library_id: project.id,
                 }),
@@ -253,15 +254,31 @@ function ProjectsEditor({ id, items, edit }: { id: string; items: ProjectItem[];
       items={items}
       edit={edit}
       addLabel="Ajouter un projet"
-      newItem={(): ProjectItem => ({ title: '', tag: '', date: '', description: '' })}
+      newItem={(): ProjectItem => ({ title: '', tag: '', date: '', description: '', bullets: [] })}
     >
       {(item, i) => (
-        <div className="grid grid-cols-[1fr_7rem] gap-2">
-          <Field label="Titre" value={item.title} onChange={(v) => edit((l) => void (l[i].title = v), `${id}.${i}.title`)} />
-          <Field label="Date" value={item.date} onChange={(v) => edit((l) => void (l[i].date = v), `${id}.${i}.date`)} />
-          <Field label="Cadre" placeholder="En équipe" value={item.tag} onChange={(v) => edit((l) => void (l[i].tag = v), `${id}.${i}.tag`)} />
-          <Field label="Lien" mono placeholder="https://github.com/…" value={item.link ?? ''} onChange={(v) => edit((l) => void (l[i].link = v || null), `${id}.${i}.link`)} />
-          <Field className="col-span-2" multiline label="Description" placeholder={RICH_HINT} value={item.description} onChange={(v) => edit((l) => void (l[i].description = v), `${id}.${i}.description`)} />
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-[1fr_7rem] gap-2">
+            <Field label="Titre" value={item.title} onChange={(v) => edit((l) => void (l[i].title = v), `${id}.${i}.title`)} />
+            <Field label="Date" value={item.date} onChange={(v) => edit((l) => void (l[i].date = v), `${id}.${i}.date`)} />
+            <Field label="Cadre" placeholder="En équipe" value={item.tag} onChange={(v) => edit((l) => void (l[i].tag = v), `${id}.${i}.tag`)} />
+            <Field label="Lien" mono placeholder="https://github.com/…" value={item.link ?? ''} onChange={(v) => edit((l) => void (l[i].link = v || null), `${id}.${i}.link`)} />
+            <Field className="col-span-2" multiline label="Description" placeholder={RICH_HINT} value={item.description} onChange={(v) => edit((l) => void (l[i].description = v), `${id}.${i}.description`)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[12px] font-medium text-foreground/75">Puces</span>
+            <BulletsEditor
+              id={`${id}-${i}-bullets`}
+              items={item.bullets ?? []}
+              addLabel="Ajouter une puce"
+              edit={(mutate, group) =>
+                edit((l) => {
+                  l[i].bullets ??= []
+                  mutate(l[i].bullets)
+                }, group)
+              }
+            />
+          </div>
         </div>
       )}
     </ItemList>

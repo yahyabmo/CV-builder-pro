@@ -59,6 +59,7 @@ export interface ProjectItem {
   tag: string
   date: string
   description: string
+  bullets: string[]
   link?: string | null
   library_id?: string | null
 }

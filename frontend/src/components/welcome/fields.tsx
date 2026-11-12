@@ -39,6 +39,7 @@ export const FIELDS: Record<Kind, Field[]> = {
     { key: 'date', label: 'Date', placeholder: 'ex. 2026' },
     { key: 'link', label: 'Lien, facultatif', placeholder: 'https://github.com/…' },
     { key: 'description', label: 'Description', multiline: true, wide: true },
+    { key: 'bullets', label: 'Puces, une par ligne (facultatif)', lines: true, wide: true },
   ],
   skills: [
     { key: 'label', label: 'Groupe', placeholder: 'ex. Programmation' },
@@ -59,7 +60,7 @@ export function blankItem(kind: Kind): Item {
     case 'experience':
       return { title: '', tag: '', place: '', dates: '', bullets: [] }
     case 'projects':
-      return { title: '', tag: '', date: '', description: '', link: null }
+      return { title: '', tag: '', date: '', description: '', bullets: [], link: null }
     case 'skills':
       return { label: '', text: '' }
     case 'languages':

@@ -57,7 +57,29 @@ def words(pdf: Path, page: int = 1) -> list[Word]:
             continue
         x0, y0, x1, y1 = (float(w.get(k)) for k in ("xMin", "yMin", "xMax", "yMax"))
         found.append(Word(text, x0, y0, x1 - x0, y1 - y0))
-    return found
+    return _spaced_letters(found)
+
+
+def _spaced_letters(found: list[Word]) -> list[Word]:
+    """Des lettres espacées (« F o r m a t i o n ») lues une à une : un seul mot."""
+    out: list[Word] = []
+    for w in found:
+        last = out[-1] if out else None
+        if (
+            last is not None
+            and len(_key(w.text)) == 1
+            and abs(last.y - w.y) < 0.3 * max(w.h, 1)
+            and 0 <= w.x - (last.x + last.w) < 0.6 * max(w.h, 1)
+            and (len(_key(last.text)) == 1 or getattr(last, "_spaced", False))
+        ):
+            merged = Word(
+                last.text + w.text, last.x, min(last.y, w.y), w.x + w.w - last.x, max(last.h, w.h)
+            )
+            merged._spaced = True  # type: ignore[attr-defined]
+            out[-1] = merged
+            continue
+        out.append(w)
+    return out
 
 
 def text_score(original: list[Word], clone: list[Word]) -> tuple[float, list[tuple[Word, float]]]:
@@ -82,7 +104,7 @@ def text_score(original: list[Word], clone: list[Word]) -> tuple[float, list[tup
     return (total / len(original) if original else 1.0), gaps
 
 
-def render(pdf: Path, dpi: int = DPI) -> Image.Image:
+def render(pdf: Path, dpi: int = DPI, page: int = 1) -> Image.Image:
     with tempfile.TemporaryDirectory() as tmp:
         stem = Path(tmp) / "page"
         subprocess.run(
@@ -92,9 +114,9 @@ def render(pdf: Path, dpi: int = DPI) -> Image.Image:
                 "-r",
                 str(dpi),
                 "-f",
-                "1",
+                str(page),
                 "-l",
-                "1",
+                str(page),
                 "-singlefile",
                 str(pdf),
                 str(stem),
@@ -104,6 +126,14 @@ def render(pdf: Path, dpi: int = DPI) -> Image.Image:
             check=True,
         )
         return Image.open(stem.with_suffix(".png")).convert("RGB")
+
+
+def pages(pdf: Path) -> int:
+    out = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True, timeout=30).stdout
+    for line in out.splitlines():
+        if line.startswith("Pages:"):
+            return int(line.split()[1])
+    return 1
 
 
 def image_score(original: Image.Image, clone: Image.Image) -> float:
@@ -132,13 +162,32 @@ class Likeness:
     worst: list[tuple[str, float]]
 
 
-def measure(original: Path, clone: Path, original_words: list[Word] | None = None) -> Likeness:
-    """``original_words`` : les mots d'un scan, lus par Tesseract (son PDF n'en a pas)."""
-    t, gaps = text_score(
-        original_words if original_words is not None else words(original), words(clone)
-    )
-    i = image_score(render(original), render(clone))
-    worst = sorted(((w.text, d) for w, d in gaps if d > NEAR), key=lambda x: -x[1])[:12]
+def measure(
+    original: Path, clone: Path, original_words: list[list[Word]] | list[Word] | None = None
+) -> Likeness:
+    """La ressemblance, page par page puis en moyenne. ``original_words`` : les mots d'un
+    scan, lus par Tesseract (son PDF n'en a pas), une liste par page."""
+    count = pages(original)
+    if original_words is not None and original_words and isinstance(original_words[0], Word):
+        original_words = [original_words]  # type: ignore[list-item]
+    texts, images, worst = [], [], []
+    for page in range(1, count + 1):
+        seen = (
+            original_words[page - 1]  # type: ignore[index]
+            if original_words is not None and page - 1 < len(original_words)
+            else words(original, page)
+        )
+        t, gaps = text_score(seen, words(clone, page) if page <= pages(clone) else [])
+        try:
+            i = image_score(render(original, page=page), render(clone, page=page))
+        except (subprocess.SubprocessError, OSError):
+            i = 0.0
+        texts.append(t)
+        images.append(i)
+        worst += [(w.text, d) for w, d in gaps if d > NEAR]
+    t = sum(texts) / len(texts)
+    i = sum(images) / len(images)
+    worst = sorted(worst, key=lambda x: -x[1])[:12]
     return Likeness(
         score=round(100 * (TEXT_SHARE * t + (1 - TEXT_SHARE) * i)), text=t, image=i, worst=worst
     )

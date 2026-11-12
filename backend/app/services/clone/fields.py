@@ -170,7 +170,10 @@ class Locator:
                     ),
                     None,
                 )
-            if block is not None and block not in self.section_block.values():
+            # Deux rubriques au même titre (l'IA range une ligne de qualités sous « Compétences »)
+            # partagent la rubrique de la page ; un titre approché n'en prend qu'une libre.
+            exact = block is not None and key(block.title_text) == k
+            if block is not None and (exact or block not in self.section_block.values()):
                 self.section_block[s.id] = block
         taken = set(map(id, self.section_block.values()))
         free = [b for b in structure.blocks if id(b) not in taken]
@@ -191,7 +194,7 @@ class Locator:
         for sid, block in self.section_block.items():
             path = f"{sid}.title"
             words = [w for line in block.title_lines for w in line.words]
-            if words:
+            if words and not any(id(w) in self.used for w in words):
                 self.hits[path] = Hit(path, words)
                 self.used.update(map(id, words))
         for path, text, sid in jobs:

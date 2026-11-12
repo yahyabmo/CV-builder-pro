@@ -434,6 +434,9 @@ def infer(
         role = _role(first_path, content)
         items: list[int] = []
         joiner = ", "
+        if role == "list" and len({p.split(".")[0] for p in paths}) > 1:
+            # Une ligne qui mêle deux rubriques : reprise telle quelle, pas comme une liste.
+            role = "field"
         if role == "list":
             indexes = []
             for p in paths:

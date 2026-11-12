@@ -279,7 +279,9 @@ def _add_lines(content: CVContent, structure: Structure, report: Report) -> None
     if not left:
         return
     left_ids = {id(w) for w in left}
-    block_section = {id(b): sid for sid, b in locator.section_block.items()}
+    block_section: dict[int, str] = {}
+    for sid, b in locator.section_block.items():
+        block_section.setdefault(id(b), sid)
     lines: list[Line] = []
     for w in left:
         line = pages.line_of[id(w)]
@@ -427,6 +429,34 @@ def _marks_and_links(content: CVContent, structure: Structure, report: Report) -
                     report.links += 1
 
 
+def _titles_from_page(content: CVContent, structure: Structure) -> bool:
+    """Une rubrique que l'IA a créée sans titre écrit sur la page (« Soft skills ») mais dont
+    tous les mots sont sous un même titre de la page prend ce titre : c'est là qu'ils sont."""
+    locator = F.Locator(structure, content)
+    hits = locator.locate()
+    pages = _Pages(structure)
+    changed = False
+    for section in content.sections:
+        if not section.visible or section.id in locator.section_block:
+            continue
+        words = [
+            w
+            for path, hit in hits.items()
+            if path.startswith(f"{section.id}.") and not path.endswith(".title")
+            for w in hit.words
+        ]
+        blocks = {
+            id(structure.block_of(pages.line_of[id(w)])): structure.block_of(pages.line_of[id(w)])
+            for w in words
+        }
+        if len(blocks) == 1:
+            block = next(iter(blocks.values()))
+            if block is not None and block.title_lines and block in locator.section_block.values():
+                section.title = block.title_text
+                changed = True
+    return changed
+
+
 def measure(content: CVContent, structure: Structure, report: Report | None = None) -> Report:
     """Les mots de la page écrits par un champ du contenu, et dans la bonne rubrique."""
     report = report or Report()
@@ -442,7 +472,9 @@ def measure(content: CVContent, structure: Structure, report: Report | None = No
             block = structure.block_of(line)
             for w in line.words:
                 block_of_word[id(w)] = block
-    section_of_block = {id(b): sid for sid, b in locator.section_block.items()}
+    section_of_block: dict[int, set[str]] = {}
+    for sid, b in locator.section_block.items():
+        section_of_block.setdefault(id(b), set()).add(sid)
     title_words = {
         id(w)
         for b in structure.blocks
@@ -472,7 +504,7 @@ def measure(content: CVContent, structure: Structure, report: Report | None = No
         if header:
             if expected is not None and block is not None and block.title is not None:
                 report.misplaced += 1
-        elif expected is not None and expected != sid:
+        elif expected is not None and sid not in expected:
             report.misplaced += 1
     return report
 
@@ -487,6 +519,8 @@ def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
         structure = analyse(pages, titles())
     _add_lines(content, structure, report)
     structure = analyse(pages, titles())
+    if _titles_from_page(content, structure):
+        structure = analyse(pages, titles())
     _marks_and_links(content, structure, report)
     for section in content.sections:
         if section.items:

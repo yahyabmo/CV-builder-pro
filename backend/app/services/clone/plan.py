@@ -93,6 +93,12 @@ class Unit(BaseModel):
     joiner: str = ", "
     # Le repère du clic sur l'aperçu (``%@ …``).
     mark: str = "none"
+    # Un scan : les boîtes de ses mots dans l'image (x0, y0, x1, y1, couleur du fond), à
+    # effacer quand l'unité change ou se décale.
+    erase: list[list] = Field(default_factory=list)
+    # Un scan : la bande d'image de l'unité (x0, y0, x1, y1, couleur du fond, fichier), déplacée
+    # telle quelle quand l'unité descend.
+    strip: list | None = None
 
 
 class Paint(BaseModel):
@@ -152,6 +158,8 @@ class SectionPlan(BaseModel):
 class PageSize(BaseModel):
     width: float
     height: float
+    # Un scan : son image en fond, le texte lu effacé (photo, icônes, puces gardées telles quelles).
+    background: str | None = None
 
 
 class AnchoredLayout(BaseModel):

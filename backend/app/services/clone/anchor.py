@@ -191,6 +191,107 @@ def _join(words: list[Word]) -> str:
     return out
 
 
+def _background(page: Page, folder: Path | None) -> str | None:
+    """L'image d'un scan, gardée telle quelle en fond de page : le texte lu y est posé en
+    invisible (il se copie, un logiciel de recrutement le lit) ; seul ce qui change est effacé
+    de l'image et réécrit."""
+    if page.background is None or folder is None or not Path(page.background).is_file():
+        return None
+    from PIL import Image
+
+    with Image.open(page.background) as opened:
+        image = opened.convert("RGB")
+    target = folder / ASSETS
+    target.mkdir(exist_ok=True)
+    name = f"{ASSETS}/fond-{page.number}.jpg"
+    image.save(folder / name, "JPEG", quality=90)
+    return name
+
+
+def _erasers(page: Page, units: list[Unit], structure: Structure, folder: Path) -> None:
+    """Pour chaque unité d'un scan : sa bande d'image (ses mots, et ce qui l'accompagne au-dessus
+    jusqu'à l'unité précédente : une puce, une icône, une étiquette que la lecture a manquée),
+    à déplacer telle quelle si l'unité descend ; et les boîtes de ses mots, à couvrir si son
+    texte change."""
+    from PIL import Image
+
+    from app.services.clone.scan import _ground
+
+    with Image.open(page.background) as opened:  # type: ignore[arg-type]
+        image = opened.convert("RGB")
+    scale = image.width / page.width
+    mine = [u for u in units if u.page == page.number and getattr(u, "_boxes", None)]
+    extent = {}
+    for u in mine:
+        boxes = u._boxes  # type: ignore[attr-defined]
+        extent[u.id] = (
+            min(b[0] for b in boxes),
+            min(b[1] for b in boxes),
+            max(b[2] for b in boxes),
+            max(b[3] for b in boxes),
+        )
+    target = folder / ASSETS
+    target.mkdir(exist_ok=True)
+    for u in mine:
+        x0, top, x1, bottom = extent[u.id]
+        own = set(u.lanes)
+        # Les bords du texte de sa colonne (pas le couloir : un fond de couleur peut le border).
+        column = [extent[o.id] for o in mine if own & set(o.lanes)]
+        left_edge = min(b[0] for b in column) - 2
+        right_edge = max(b[2] for b in column) + 2
+        row = [
+            extent[o.id]
+            for o in mine
+            if o is not u
+            and own & set(o.lanes)
+            and extent[o.id][1] < bottom
+            and extent[o.id][3] > top
+        ]
+        # Jusqu'aux bords de la colonne, sauf s'il y a une autre unité sur la même ligne.
+        left = max([b[2] + 1 for b in row if b[2] <= x0 + 1] or [left_edge + 1])
+        right = min([b[0] - 1 for b in row if b[0] >= x1 - 1] or [right_edge - 1])
+        left, right = min(left, x0 - 2), max(right, x1 + 2)
+        above = [
+            extent[o.id][3]
+            for o in mine
+            if o is not u
+            and own & set(o.lanes)
+            and extent[o.id][3] <= top + 0.5
+            and extent[o.id][0] < right
+            and extent[o.id][2] > left
+        ]
+        upper = max(above) + 0.6 if above else top - 3
+        lower = bottom + 1.0
+        box_px = (
+            max(0, int(left * scale)),
+            max(0, int(upper * scale)),
+            min(image.width, int(right * scale) + 1),
+            min(image.height, int(lower * scale) + 1),
+        )
+        if box_px[2] - box_px[0] < 2 or box_px[3] - box_px[1] < 2:
+            continue
+        crop = image.crop(box_px)
+        name = f"{ASSETS}/bande-{page.number}-{u.id}.jpg"
+        crop.save(folder / name, "JPEG", quality=92)
+        border = [crop.getpixel((x, 0)) for x in range(0, crop.width, 3)] + [
+            crop.getpixel((x, crop.height - 1)) for x in range(0, crop.width, 3)
+        ]
+        color = tuple(int(statistics.median(p[i] for p in border)) for i in range(3))
+        u.strip = [
+            round(box_px[0] / scale, 2),
+            round(box_px[1] / scale, 2),
+            round(box_px[2] / scale, 2),
+            round(box_px[3] / scale, 2),
+            "".join(f"{c:02X}" for c in color),
+            name,
+        ]
+        for bx0, btop, bx1, bbottom in u._boxes:  # type: ignore[attr-defined]
+            pad = max(1.5, 0.12 * (bbottom - btop))
+            box = (bx0 - pad, btop - pad, bx1 + pad, bbottom + pad)
+            r, g, b = _ground(image, tuple(int(v * scale) for v in box))  # type: ignore[arg-type]
+            u.erase.append([round(v, 2) for v in box] + [f"{r:02X}{g:02X}{b:02X}"])
+
+
 def infer(
     pages: list[Page],
     structure: Structure,
@@ -486,6 +587,7 @@ def infer(
             mark=_mark(first_path, content),
         )
         unit._snaps = snaps  # type: ignore[attr-defined]
+        unit._boxes = [(w.x0, w.top, w.x1, w.bottom) for w in words]  # type: ignore[attr-defined]
         units.append(unit)
 
     # ─── Les écarts : depuis l'unité précédente de la même colonne ───
@@ -503,8 +605,14 @@ def infer(
             else:
                 u.gap = round(u.y, 3)
 
+    for page in pages:
+        if page.background is not None and folder is not None:
+            _erasers(page, units, structure, folder)
     layout = AnchoredLayout(
-        pages=[PageSize(width=p.width, height=p.height) for p in pages],
+        pages=[
+            PageSize(width=p.width, height=p.height, background=_background(p, folder))
+            for p in pages
+        ],
         lanes=[[(round(a, 2), round(b, 2)) for a, b in lanes] for lanes in structure.lanes],
     )
 
@@ -547,6 +655,8 @@ def infer(
         return unit.id, exact
 
     for page in pages:
+        if page.background is not None:
+            continue  # un scan : ses formes sont dans l'image de fond
         for s in page.shapes:
             unit, exact = attach(page.number, s.box)
             layout.paints.append(

@@ -20,8 +20,10 @@ from app.services.clone import fonts as clone_fonts
 from app.services.clone.likeness import Word as Seen
 from app.services.clone.reading import Line, Page, Shape, Word
 
-# Les polices courantes des CV faits sous Word, par leurs équivalents aux mêmes largeurs.
+# Les polices courantes des CV : Word (par leurs équivalents aux mêmes largeurs), puis Canva
+# et les modèles en ligne (téléchargées de Google Fonts au besoin).
 CANDIDATES = ("Arimo", "Tinos", "Carlito")
+ONLINE = ("Montserrat", "Open Sans", "Roboto", "Raleway", "Nunito", "Inter")
 GRID = 4  # 300 ppp / 4 = 75 ppp pour chercher les formes
 DESCENDERS = set("gjpqyQ,;()[]")
 
@@ -40,43 +42,78 @@ def _pixels(image: Image.Image):
     return getter()
 
 
+def _ground(image: Image.Image, box: tuple[int, int, int, int]) -> tuple[int, int, int]:
+    """La couleur du fond autour d'un mot : un anneau de pixels juste hors de sa boîte."""
+    x0, y0, x1, y1 = box
+    ring = []
+    for x in range(max(0, x0 - 3), min(image.width, x1 + 3), 2):
+        for y in (y0 - 4, y1 + 3):
+            if 0 <= y < image.height:
+                ring.append(image.getpixel((x, y)))
+    for y in range(max(0, y0), min(image.height, y1), 2):
+        for x in (x0 - 4, x1 + 3):
+            if 0 <= x < image.width:
+                ring.append(image.getpixel((x, y)))
+    if not ring:
+        return (255, 255, 255)
+    return tuple(int(statistics.median(p[i] for p in ring)) for i in range(3))  # type: ignore[return-value]
+
+
 def _ink(image: Image.Image, box: tuple[int, int, int, int]) -> tuple[str, float]:
     """La couleur de l'encre d'un mot et l'épaisseur de ses traits (pour le gras).
 
-    Le fond est la couleur la plus fréquente du mot (le papier, ou un bandeau de couleur) ;
-    l'encre, ce qui s'en écarte nettement : du blanc sur un bandeau sombre aussi. L'épaisseur
-    est la longueur moyenne des traits d'encre sur chaque rangée de pixels, rapportée à la
-    hauteur du mot.
+    Le fond se lit autour du mot (le papier, ou un bandeau de couleur) ; l'encre, ce qui s'en
+    écarte nettement dans la boîte : du blanc sur un bandeau sombre aussi. L'épaisseur est la
+    longueur médiane des traits d'encre sur chaque rangée de pixels, rapportée à la hauteur.
     """
     region = image.crop(box)
     width, height = region.size
     if width == 0 or height == 0:
         return "000000", 0.0
     px = region.load()
-    ground = Counter(
-        (px[x, y][0] // 16, px[x, y][1] // 16, px[x, y][2] // 16)
-        for x in range(width)
-        for y in range(height)
-    ).most_common(1)[0][0]
-    ground = tuple(c * 16 + 8 for c in ground)
+    ground = _ground(image, box)
     inked = []
-    runs = 0
+    runs: list[int] = []
     for y in range(height):
-        inside = False
+        length = 0
         for x in range(width):
             p = px[x, y]
-            on = sum(abs(p[i] - ground[i]) for i in range(3)) > 150
-            if on:
+            if sum(abs(p[i] - ground[i]) for i in range(3)) > 150:
                 inked.append(p)
-                if not inside:
-                    runs += 1
-            inside = on
+                length += 1
+            elif length:
+                runs.append(length)
+                length = 0
+        if length:
+            runs.append(length)
     if not inked:
         return "000000", 0.0
     far = sorted(inked, key=lambda p: -sum(abs(p[i] - ground[i]) for i in range(3)))
     strongest = far[: max(1, len(far) // 2)]
     color = tuple(statistics.median(p[i] for p in strongest) for i in range(3))
-    return "".join(f"{int(c):02X}" for c in color), len(inked) / runs / height
+    # La médiane des traits : celle des fûts verticaux (les barres horizontales, plus longues,
+    # sont plus rares).
+    return "".join(f"{int(c):02X}" for c in color), statistics.median(runs) / height
+
+
+def _glyph(words: list[tuple], n: int) -> str | None:
+    """Le premier « mot » d'une ligne lu par erreur : une puce (« e », « o ») ou une icône
+    (« GC » devant un téléphone). Une petite boîte presque carrée, suivie d'un grand blanc."""
+    if n != 0 or len(words) < 2:
+        return None
+    text, x, _, w, h = words[0]
+    if len(text) > 2 or w <= 0 or h <= 0 or not 0.65 <= w / h <= 1.5:
+        return None
+    gap = words[1][1] - (x + w)
+    others = [b[1] - (a[1] + a[3]) for a, b in zip(words[1:], words[2:], strict=False)]
+    usual = statistics.median(others) if others else 0.0
+    rest = statistics.median(word[4] for word in words[1:])
+    if usual and gap < 1.6 * usual:
+        return None
+    if not usual and gap < 0.5 * max(h, rest):
+        return None
+    # Plus petite que les lettres : une puce. Plus grande : une icône.
+    return "marker" if h < 0.6 * rest else "icon"
 
 
 def _font(lines: list[ocr.Line], online: bool) -> str:
@@ -97,6 +134,10 @@ def _font(lines: list[ocr.Line], online: bool) -> str:
         if len(w[0]) >= 4 and w[0].isalpha()
     ][:200]
     candidates = [clone_fonts.resolve(name, online)[0] for name in CANDIDATES]
+    for name in ONLINE:
+        found = clone_fonts.known(name) or (clone_fonts.download(name) if online else None)
+        if found and found not in candidates:
+            candidates.append(found)
     candidates += [f for f in fonts.families() if f not in candidates]
     best, best_spread = candidates[0], float("inf")
     for font_id in candidates:
@@ -262,6 +303,7 @@ def page(scanned: ocr.ScannedPage, folder: Path, number: int = 1, online: bool =
     font_id = _font(scanned.lines, online)
     face = _face(font_id)
     family = fonts.get(font_id).name.replace(" ", "")
+    _unglue_icons(scanned)
     lines: list[Line] = []
     measured = []
     for line in scanned.lines:
@@ -281,9 +323,7 @@ def page(scanned: ocr.ScannedPage, folder: Path, number: int = 1, online: bool =
             )
             color, stem = _ink(image, box)
             measured.append((color, stem, size))
-    # Le gras : des traits nettement plus épais que ceux du texte courant.
-    stems = [stem for _, stem, _ in measured if stem > 0]
-    usual = statistics.median(stems) if stems else 0.0
+    bold_of = _weights(measured, _all_words(scanned))
     n = 0
     for line in scanned.lines:
         size = measured[n][2] if n < len(measured) else line.h * 0.75
@@ -291,10 +331,15 @@ def page(scanned: ocr.ScannedPage, folder: Path, number: int = 1, online: bool =
         bottoms = [y + h for text, _, y, _, h in line.words if not set(text) & DESCENDERS]
         baseline = statistics.median(bottoms) if bottoms else line.y + line.h - 0.2 * size
         words = []
-        for text, x, y, w, h in line.words:
+        for k, (text, x, y, w, h) in enumerate(line.words):
             color, stem, _ = measured[n]
             n += 1
-            heavy = usual > 0 and any(ch.isalnum() for ch in text) and stem > 1.15 * usual
+            glyph = _glyph(line.words, k)
+            if glyph == "icon":
+                continue  # l'icône reste dans l'image de fond
+            if glyph == "marker":
+                text = "•"
+            heavy = bold_of[n - 1] and any(ch.isalnum() for ch in text)
             words.append(
                 Word(
                     text=text,
@@ -311,6 +356,17 @@ def page(scanned: ocr.ScannedPage, folder: Path, number: int = 1, online: bool =
                     italic=False,
                 )
             )
+        # Une boîte lue qui empiète sur le mot suivant (une virgule comptée trop large) : rognée.
+        for word, after in zip(words, words[1:], strict=False):
+            if word.x1 > after.x0 - 0.8 and after.x0 - 0.8 > word.x0:
+                word.x1 = after.x0 - 0.8
+        # Sur un scan, le gras se décide par segment entier (un titre, un libellé) : mot à mot,
+        # de petites lettres le trahissent.
+        for segment_words in _segments_of(words, size):
+            letters = sum(len(w.text) for w in segment_words) or 1
+            heavy_share = sum(len(w.text) for w in segment_words if w.bold) / letters
+            for w in segment_words:
+                w.bold = heavy_share > 0.6
         # Un grand blanc (une date alignée à droite, une autre colonne) ouvre un segment.
         segment: list[Word] = []
         for w in words:
@@ -326,7 +382,89 @@ def page(scanned: ocr.ScannedPage, folder: Path, number: int = 1, online: bool =
         height=scanned.height,
         lines=sorted(lines, key=lambda line: (round(line.baseline, 1), line.x0)),
         shapes=_shapes(image, paper, scale),
+        background=folder / "scan" / scanned.image,
     )
+
+
+def _weights(measured: list[tuple], words: list[tuple]) -> list[bool]:
+    """Le gras de chaque mot, d'après l'épaisseur de ses traits.
+
+    On compare des mots comparables : même taille, même encre (claire ou foncée). Dans un
+    groupe, le gras n'existe que s'il y a deux épaisseurs nettement distinctes ; un groupe
+    entier plus épais que le texte courant (des titres) est gras en bloc.
+    """
+
+    def lum(color: str) -> int:
+        return sum(int(color[i : i + 2], 16) for i in (0, 2, 4)) // 3
+
+    groups: dict[tuple, list[int]] = {}
+    for n, ((color, stem, size), word) in enumerate(zip(measured, words, strict=True)):
+        if stem > 0 and len(word[0]) >= 3:
+            groups.setdefault((round(size), lum(color) > 128), []).append(n)
+    out = [False] * len(measured)
+    if not groups:
+        return out
+    body = max(groups.values(), key=len)
+    body_stem = statistics.median(measured[n][1] for n in body)
+    for members in groups.values():
+        stems = sorted(measured[n][1] for n in members)
+        split = None
+        if len(stems) >= 4:
+            # La coupure qui sépare le mieux deux épaisseurs (Otsu).
+            best = 0.0
+            for k in range(1, len(stems)):
+                lo, hi = stems[:k], stems[k:]
+                m_lo, m_hi = statistics.mean(lo), statistics.mean(hi)
+                score = len(lo) * len(hi) * (m_hi - m_lo) ** 2
+                if score > best and m_hi >= 1.3 * m_lo and min(len(lo), len(hi)) >= 2:
+                    best, split = score, (stems[k - 1] + stems[k]) / 2
+        if split is not None:
+            for n in members:
+                out[n] = measured[n][1] > split
+        elif statistics.median(stems) >= 1.25 * body_stem:
+            for n in members:
+                out[n] = True
+    return out
+
+
+def _unglue_icons(scanned: ocr.ScannedPage) -> None:
+    """Une icône lue comme une lettre collée au mot qui la suit (« d » devant une adresse) :
+    le mot commence à la place des icônes des lignes voisines, et dépasse sur la colonne où
+    commence leur texte. Sa première lettre est retirée."""
+    icons = []
+    for line in scanned.lines:
+        if _glyph(line.words, 0) == "icon":
+            icons.append((line.words[0][1], line.words[1][1], line.y))
+    if not icons:
+        return
+    for line in scanned.lines:
+        if not line.words or _glyph(line.words, 0) is not None:
+            continue
+        text, x, y, w, h = line.words[0]
+        near = [i for i in icons if abs(i[0] - x) < 3 and abs(i[2] - line.y) < 80]
+        if not near or len(text) < 6:
+            continue
+        start = statistics.median(i[1] for i in near)
+        if x + w <= start:
+            continue
+        line.words[0] = (text[1:], start, y, x + w - start, h)
+        line.text = " ".join(word[0] for word in line.words)
+        line.x = min(word[1] for word in line.words)
+        line.w = max(word[1] + word[3] for word in line.words) - line.x
+
+
+def _segments_of(words: list[Word], size: float) -> list[list[Word]]:
+    out: list[list[Word]] = []
+    for w in words:
+        if out and w.x0 - out[-1][-1].x1 <= 1.4 * size:
+            out[-1].append(w)
+        else:
+            out.append([w])
+    return out
+
+
+def _all_words(scanned: ocr.ScannedPage) -> list[tuple]:
+    return [w for line in scanned.lines for w in line.words]
 
 
 def pages(scanned: list[ocr.ScannedPage], folder: Path, online: bool = True) -> list[Page]:
@@ -334,5 +472,15 @@ def pages(scanned: list[ocr.ScannedPage], folder: Path, online: bool = True) -> 
 
 
 def words(scanned: ocr.ScannedPage) -> list[Seen]:
-    """Les mots lus, pour mesurer la ressemblance du clone avec le scan."""
-    return [Seen(text, x, y, w, h) for line in scanned.lines for text, x, y, w, h in line.words]
+    """Les mots lus, pour mesurer la ressemblance du clone avec le scan (sans les icônes et les
+    puces lues comme des lettres : le clone les laisse, à raison, dans l'image)."""
+    import copy
+
+    page = copy.deepcopy(scanned)
+    _unglue_icons(page)
+    out = []
+    for line in page.lines:
+        for k, (text, x, y, w, h) in enumerate(line.words):
+            if _glyph(line.words, k) is None:
+                out.append(Seen(text, x, y, w, h))
+    return out

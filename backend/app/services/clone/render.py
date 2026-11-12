@@ -188,7 +188,13 @@ class Writer:
         )
 
     def background(self, page: int) -> str:
-        lines = [self.paint(p) for p in self.layout.paints if p.page == page and p.unit is None]
+        lines = []
+        size = self.layout.pages[page - 1]
+        if size.background:
+            lines.append(
+                self.picture(size.background, (0.0, 0.0, size.width, size.height), "square")
+            )
+        lines += [self.paint(p) for p in self.layout.paints if p.page == page and p.unit is None]
         lines += [
             self.picture(pic.file, pic.box, pic.shape)
             for pic in self.layout.pictures
@@ -197,6 +203,8 @@ class Writer:
         photo = self.layout.photo
         if photo and self.photo and photo.page == page:
             lines.append(self.picture(self.photo, photo.box, photo.shape))
+        if size.background:
+            lines.append("\\cverasures")
         body = "\n".join(line for line in lines if line)
         if not body:
             return ""
@@ -229,21 +237,86 @@ class Writer:
         )
 
     # ─── Le texte ───
-    def word(self, g: Glyph) -> str:
+    def word(self, g: Glyph, hidden: bool = False) -> str:
+        """Un mot à son bord gauche, ramené à sa largeur d'origine (invisible : sans limite)."""
         text = "{" + self.ink(g.i) + " " + escape(g.t) + "}"
         if g.u:
             text = f"\\href{{{escape_url(g.u)}}}{{{text}}}"
         lift = f"\\raisebox{{{bp(-g.dy)}}}" if abs(g.dy) > 0.05 else ""
-        return f"\\cvw{{{bp(g.x)}}}{{{bp(g.w)}}}{{{lift}{{{text}}}}}"
+        if hidden and g.w > 3:
+            # Invisible : un demi-point de moins de chaque côté (même centre), pour qu'un vrai
+            # blanc sépare deux mots dont les boîtes lues se touchent presque.
+            return f"\\cvwh{{{bp(g.x + 0.5)}}}{{{bp(g.w - 1.0)}}}{{{lift}{{{text}}}}}"
+        macro = "\\cvwh" if hidden else "\\cvw"
+        return f"{macro}{{{bp(g.x)}}}{{{bp(g.w)}}}{{{lift}{{{text}}}}}"
 
-    def exact(self, unit: Unit) -> str:
+    def exact(self, unit: Unit, hidden: bool = False) -> str:
+        """Les lignes d'origine, mot par mot ; ``hidden`` : invisibles (un scan dont l'image
+        montre déjà ce texte), mais qui se copient et se lisent."""
         out = []
         for row in unit.rows:
             if not row.words:
                 continue
             y = f"\\dimexpr\\cvy+{bp(row.y)}\\relax"
-            out.append(f"\\cvline{{{y}}}{{{''.join(self.word(g) for g in row.words)}}}")
+            words = "".join(self.word(g, hidden) for g in row.words)
+            if hidden:
+                words = f"\\cvhide{{{words}}}"
+            out.append(f"\\cvline{{{y}}}{{{words}}}")
         return "\n".join(out)
+
+    def lift(self, unit: Unit) -> str:
+        """Un scan, unité décalée : sa bande d'image effacée à sa place d'origine (sous tout le
+        texte) et posée à sa nouvelle hauteur, telle quelle."""
+        if not unit.strip:
+            return self.erase(unit)
+        x0, y0, x1, y1, color, file = unit.strip
+        hole = (
+            f"\\cverase{{\\fill[{self.color(color)}] ({x0:.2f},{y0:.2f}) rectangle "
+            f"({x1:.2f},{y1:.2f});}}"
+        )
+        y = f"\\dimexpr\\cvy-{bp(unit.y - y0)}\\relax"
+        image = f"\\cvstrip{{{bp(x0)}}}{{{y}}}{{{bp(x1 - x0)}}}{{{bp(y1 - y0)}}}{{{file}}}"
+        return hole + "\n" + image
+
+    def cover(self, unit: Unit) -> str:
+        """Les mots d'origine d'une unité qui change, couverts à sa nouvelle hauteur (sa puce,
+        elle, reste celle de l'image)."""
+        erase = unit.erase[1:] if unit.marker is not None else unit.erase
+        boxes = [
+            f"\\fill[{self.color(c)}] ({x0:.2f},{y0 - unit.y:.2f}) "
+            f"rectangle ({x1:.2f},{y1 - unit.y:.2f});"
+            for x0, y0, x1, y1, c in erase
+        ]
+        if not boxes:
+            return ""
+        return (
+            "\\begin{textblock*}{\\paperwidth}(0pt,\\cvy)\\noindent\\smash{\\rlap{"
+            "\\begin{tikzpicture}[overlay, x=1bp, y=-1bp]" + "".join(boxes) + "\\end{tikzpicture}}}"
+            "\\end{textblock*}"
+        )
+
+    def remove(self, unit: Unit) -> str:
+        """Un scan, unité retirée : sa bande d'image effacée (ou, à défaut, ses mots)."""
+        if unit.strip:
+            x0, y0, x1, y1, color, _ = unit.strip
+            return (
+                f"\\cverase{{\\fill[{self.color(color)}] ({x0:.2f},{y0:.2f}) rectangle "
+                f"({x1:.2f},{y1:.2f});}}"
+            )
+        return self.erase(unit)
+
+    def erase(self, unit: Unit) -> str:
+        """Efface de l'image d'un scan les mots d'origine d'une unité (repeints de la couleur
+        du fond autour d'eux)."""
+        boxes = [
+            f"\\fill[{self.color(c)}] ({x0:.2f},{y0:.2f}) rectangle ({x1:.2f},{y1:.2f});"
+            for x0, y0, x1, y1, c in unit.erase
+        ]
+        if not boxes:
+            return ""
+        # Dessinés avec le fond de page, sous tout le texte : une ligne qui descend sur la place
+        # d'une autre n'est jamais repeinte par l'effacement de celle-ci.
+        return "\\cverase{" + "".join(boxes) + "}"
 
     def field_text(self, part: Part, text: str) -> str:
         ink = self.layout.inks[part.ink] if part.ink < len(self.layout.inks) else None
@@ -340,18 +413,16 @@ class Writer:
         tail_text = "".join("{" + self.ink(p.ink) + " " + escape(p.text) + "}" for p in suffix)
         return head + joiner.join(rendered) + tail_text
 
-    def reflow(self, unit: Unit, text: str) -> str:
+    def reflow(self, unit: Unit, text: str, marker: bool = True) -> str:
         """Le texte qui coule dans la boîte de l'unité ; ``\\cvn`` reçoit son nombre de lignes."""
         lead = {"left": "\\raggedright", "right": "\\raggedleft", "center": "\\centering"}[
             unit.align
         ]
         main = next((p.ink for p in unit.parts if p.path), unit.parts[0].ink if unit.parts else 0)
         indent = f"\\hspace*{{{bp(unit.indent)}}}" if unit.indent else ""
-        marker = ""
-        if unit.marker is not None:
-            marker = (
-                f"\\cvline{{\\cvy}}{{{self.word(unit.marker.model_copy(update={'w': 0.0}))}}}\n"
-            )
+        sign = ""
+        if unit.marker is not None and marker:
+            sign = f"\\cvline{{\\cvy}}{{{self.word(unit.marker.model_copy(update={'w': 0.0}))}}}\n"
         width = max(unit.x1 - unit.x0, 10)
         body = (
             f"{self.ink(main)}\\setlength\\baselineskip{{{bp(unit.leading)}}}"
@@ -359,7 +430,7 @@ class Writer:
             f"\\rule{{0pt}}{{{bp(unit.ascent)}}}{text}\\par\\xdef\\cvn{{\\the\\prevgraf}}"
         )
         return (
-            marker
+            sign
             + f"\\cvpar{{{bp(unit.x0)}}}{{\\cvy}}{{{bp(width)}}}{{{bp(unit.ascent)}}}{{{body}}}"
         )
 
@@ -536,7 +607,8 @@ class Writer:
 
     # ─── Une page ───
     def page(self, number: int) -> str:
-        out = [self.background(number)]
+        scanned = bool(self.layout.pages[number - 1].background)
+        out = ["\\gdef\\cverasures{}", self.background(number)]
         out.append("".join(f"\\global\\cvs{LANES[n]}=0pt" for n in range(self.lanes)))
         out.append("\\global\\cvlowest=0pt")
         # La dernière ligne de base d'origine posée dans chaque colonne.
@@ -554,6 +626,8 @@ class Writer:
                 y_band = band.y
             states = [(u, *self.state(u, band)) for u in band.units]
             rendered = [(u, st, t) for u, st, t in states if st != "removed"]
+            if scanned and not band.virtual:
+                out += [self.remove(u) for u, st, _ in states if st == "removed"]
             if not rendered:
                 if not band.virtual:
                     for n in lanes:
@@ -573,11 +647,26 @@ class Writer:
                 out.append(mark(*u.mark.split()) if u.mark != "none" else mark("none"))
                 out.append(f"\\global\\cvy=\\dimexpr{bp(y)}+\\cvd\\relax")
                 out.append(self.attached(u, st == "exact" and not band.virtual))
-                if st == "exact":
+                if st == "exact" and scanned and not band.virtual:
+                    # Un scan : en place, l'image montre déjà le texte (posé en invisible) ;
+                    # décalé, il est effacé de l'image et réécrit.
+                    out.append("\\ifdim\\dimexpr\\ifdim\\cvd<0pt -\\fi\\cvd\\relax<0.5pt")
+                    out.append(self.exact(u, hidden=True))
+                    out.append("\\else")
+                    out.append(self.lift(u))
+                    out.append(self.exact(u, hidden=bool(u.strip)))
+                    out.append("\\fi")
+                    out.append(f"\\global\\cvend=\\dimexpr\\cvy+{bp(u.end)}\\relax")
+                elif st == "exact":
                     out.append(self.exact(u))
                     out.append(f"\\global\\cvend=\\dimexpr\\cvy+{bp(u.end)}\\relax")
                 else:
-                    out.append(self.reflow(u, text))
+                    if scanned and not band.virtual:
+                        out.append(self.lift(u) if u.strip else self.erase(u))
+                        out.append(self.cover(u) if u.strip else "")
+                    out.append(
+                        self.reflow(u, text, marker=not (scanned and u.strip and not band.virtual))
+                    )
                     out.append(f"\\global\\cvend=\\dimexpr\\cvy+{bp(u.leading)}*(\\cvn-1)\\relax")
                 out.append("\\ifdim\\cvend>\\cvbandend\\global\\cvbandend=\\cvend\\fi")
                 out.append("\\ifdim\\cvend>\\cvlowest\\global\\cvlowest=\\cvend\\fi")
@@ -725,9 +814,20 @@ class Writer:
 \\else\\ifdim\\cvr pt<0.6pt\\usebox\\cvbox
 \\else\\scalebox{{\\cvr}}[1]{{\\usebox\\cvbox}}\\fi\\fi
 \\else\\usebox\\cvbox\\fi}}
+% Un mot invisible (scan) toujours ramené à la largeur lue : il ne déborde pas sur le suivant.
+\\newcommand\\cvfitall[2]{{\\sbox\\cvbox{{#2}}%
+\\ifdim\\wd\\cvbox>0.5pt\\scalebox{{\\fpeval{{#1/\\the\\wd\\cvbox}}}}[1]{{\\usebox\\cvbox}}\\else\\usebox\\cvbox\\fi}}
+\\newcommand\\cvwh[3]{{\\rlap{{\\hskip#1\\cvfitall{{#2}}{{#3}}}}}}
 % Une ligne posée sur sa ligne de base ; un mot à son bord gauche ; un paragraphe qui coule.
 \\newcommand\\cvline[2]{{\\begin{{textblock*}}{{\\paperwidth}}(0pt,#1)\\noindent\\smash{{\\rlap{{#2}}}}\\end{{textblock*}}}}
 \\newcommand\\cvw[3]{{\\rlap{{\\hskip#1\\cvfit{{#2}}{{#3}}}}}}
+% Les mots d'un scan à effacer de l'image : dessinés avec le fond de la page, à la fin.
+\\def\\cverasures{{}}
+\\newcommand\\cverase[1]{{\\xdef\\cverasures{{\\unexpanded\\expandafter{{\\cverasures}}\\unexpanded{{#1}}}}}}
+% Une bande d'image d'un scan, posée par son coin haut gauche.
+\\newcommand\\cvstrip[5]{{\\begin{{textblock*}}{{#3}}(#1,#2)\\noindent\\includegraphics[width=#3,height=#4]{{#5}}\\end{{textblock*}}}}
+% Du texte invisible (un scan : l'image le montre), qui se copie et se lit.
+\\newcommand\\cvhide[1]{{\\special{{pdf:code q 3 Tr}}#1\\special{{pdf:code 0 Tr Q}}}}
 \\newcommand\\cvpar[5]{{\\begin{{textblock*}}{{#3}}(#1,\\dimexpr#2-#4\\relax)#5\\end{{textblock*}}}}
 \\begin{{document}}
 {content}

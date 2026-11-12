@@ -17,7 +17,7 @@ from pathlib import Path
 DPI = 300
 PAGES = 3
 OCR_FILE = "ocr.json"
-# Un mot lu avec moins de confiance (sur 100) est écarté.
+# Un mot lu avec moins de confiance (sur 100) est écarté, sauf s'il a au moins trois lettres.
 MIN_CONFIDENCE = 30
 INSTALL = "sudo apt install -y tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng"
 
@@ -67,9 +67,13 @@ def _lines(tsv: str, scale: float) -> list[Line]:
         if row.get("level") != "5" or not (row.get("text") or "").strip():
             continue
         try:
-            if float(row["conf"]) < MIN_CONFIDENCE:
-                continue
+            confidence = float(row["conf"])
         except (KeyError, ValueError):
+            continue
+        # Un mot peu sûr est gardé s'il a au moins trois lettres ou chiffres (une adresse
+        # e-mail précédée d'une icône, une petite étiquette) ; un signe isolé, non.
+        letters = sum(ch.isalnum() for ch in row["text"])
+        if confidence < MIN_CONFIDENCE and letters < 3:
             continue
         groups.setdefault(
             (int(row["block_num"]), int(row["par_num"]), int(row["line_num"])), []

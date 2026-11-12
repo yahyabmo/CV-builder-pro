@@ -34,7 +34,7 @@ from app.models.content import (
 )
 from app.services.clone import fields as F
 from app.services.clone.reading import Line, Page, Word
-from app.services.clone.structure import Block, Structure, analyse, is_marker, key
+from app.services.clone.structure import SEPARATOR, Block, Structure, analyse, is_marker, key
 from app.text import slugify
 
 # Les champs où un mot en gras au milieu du texte garde sa marque.
@@ -265,6 +265,12 @@ def _text(lines: list[Line], only: set[int]) -> str:
     return re.sub(r"(\w)- (\w)", r"\1\2", text).strip()
 
 
+_DATE = re.compile(
+    r"(?:(?:janv|févr|fevr|mars|avr|mai|juin|juil|août|aout|sept|oct|nov|déc|dec)\w*\.?\s+)?"
+    r"(?:\d{1,2}/)?(?:19|20)\d\d(?:\s*[-–—]\s*(?:(?:\w+\.?\s+)?(?:\d{1,2}/)?(?:19|20)\d\d"
+    r"|aujourd\S*hui|présent|present|en cours))?",
+    re.I,
+)
 _CONTACT = re.compile(r"@|https?://|www\.|linkedin|github|\+?\d[\d .-]{7,}")
 
 
@@ -371,6 +377,12 @@ def _to_section(section, text: str, top: float, hits: dict[str, F.Hit], pages: _
         if n < 0:
             return
         item = section.items[n]
+        # Une date oubliée par l'IA va dans le champ des dates de l'entrée, s'il est vide.
+        if _DATE.fullmatch(text.strip()):
+            name = "date" if isinstance(section, ProjectsSection) else "dates"
+            if not (getattr(item, name, "") or "").strip():
+                setattr(item, name, text.strip())
+                return
         if isinstance(section, EducationSection):
             item.description = (item.description.rstrip() + " " + text).strip()
         else:
@@ -509,9 +521,17 @@ def measure(content: CVContent, structure: Structure, report: Report | None = No
     return report
 
 
+def _no_separator(content: CVContent) -> None:
+    """Le séparateur du texte donné à l'IA (« ⟶ »), s'il a été recopié dans un champ."""
+    for path, text, _ in F.paths(content):
+        if SEPARATOR in text:
+            _put(content, path, re.sub(rf"\s*{SEPARATOR}\s*", " ", text).strip())
+
+
 def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
     """Le contenu complété d'après la page, et le compte rendu."""
     content = content.model_copy(deep=True)
+    _no_separator(content)
     report = Report()
     titles = lambda: [s.title for s in content.sections if s.visible]  # noqa: E731
     structure = analyse(pages, titles())

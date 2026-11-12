@@ -91,7 +91,9 @@ def compare(original: list[Page], clone_pdf: Path, tolerance: float = TOLERANCE)
                 out.lines_in_place += 1
         out.extra += [w.text for words in pool.values() for w in words]
         if theirs is not None:
-            out.overlaps += _overlaps(theirs)
+            # Seulement ce qui ne se chevauchait pas déjà dans l'original.
+            before = {tuple(sorted(pair)) for pair in _overlaps(page)}
+            out.overlaps += [p for p in _overlaps(theirs) if tuple(sorted(p)) not in before]
             out.overflow += [
                 w.text
                 for line in theirs.lines

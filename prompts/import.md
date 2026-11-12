@@ -11,8 +11,9 @@ Règles absolues :
   rien ajouter.
 - Le texte est déjà rangé par rubrique : chaque « ## Titre » ouvre une rubrique
   du CV et tout ce qui le suit lui appartient, jusqu'au titre suivant. Ce qui
-  précède le premier titre est l'en-tête. « | » sépare deux morceaux d'une même
-  ligne (un intitulé et sa date, par exemple).
+  précède le premier titre est l'en-tête. « ⟶ » sépare deux morceaux d'une même
+  ligne (un intitulé et sa date, par exemple) : ce n'est pas du texte du CV, ne
+  le recopie jamais dans un champ.
 - Une puce par élément de `bullets`, sans le signe de puce ; une puce coupée en
   fin de ligne reste une seule puce. Les projets aussi ont leurs `bullets`.
 - Les compétences gardent leurs groupes s'il y en a ; sinon, un seul groupe

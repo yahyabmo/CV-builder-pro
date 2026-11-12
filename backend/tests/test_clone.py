@@ -189,6 +189,8 @@ def test_import_with_clone_keeps_the_form(client: TestClient) -> None:
     clone = out.json()
     assert clone["available"] and clone["ok"] and clone["likeness"] >= 95, clone
     assert any("place exacte" in k for k in clone["kept"]), clone["kept"]
+    # Le contrôle est parfait : le clone est proposé par défaut, sans avertissement.
+    assert clone["recommended"] is True and clone["warning"] is None
     assert client.get(f"/api/welcome/import/{reading_out['id']}/clone.pdf").content[:4] == b"%PDF"
 
     applied = client.post(
@@ -235,3 +237,64 @@ def test_a_first_version_clone_still_renders(tmp_path: Path) -> None:
     assert isinstance(cv_store.load_clone(tmp_path), CloneLayout)
     tex = cv_store.generated(tmp_path)
     assert "CV cloné" in tex and "\\cvline" not in tex
+
+
+def _line(text: str, x0: float, top: float, width: float, size: float = 9.0) -> reading.Line:
+    words, x = [], x0
+    step = width / max(len(text.split()), 1)
+    for part in text.split():
+        words.append(
+            reading.Word(
+                part,
+                x,
+                x + step - 2,
+                top,
+                top + size,
+                top + 0.8 * size,
+                "A",
+                "A",
+                size,
+                "000000",
+                False,
+                False,
+            )  # fmt: skip
+        )
+        x += step
+    return reading.Line(words)
+
+
+def test_columns_are_found_under_a_full_width_header_and_footer() -> None:
+    """Un en-tête et des publications sur toute la largeur traversent le couloir : les
+    colonnes existent quand même, là où elles sont côte à côte."""
+    lines = [_line("Prénom Nom en très grand titre centré", 40, 30, 500)]
+    lines += [_line("Ville | Téléphone : 06 | Email : adresse", 40, 50, 500)]
+    lines += [_line("LinkedIn : profil | GitHub : compte en ligne", 40, 62, 500)]
+    for n in range(14):
+        lines.append(_line(f"Gauche ligne {n} avec des mots", 40, 90 + 14 * n, 150))
+        lines.append(
+            _line(f"Droite ligne {n} avec bien plus de mots encore", 230, 90 + 14 * n, 320)
+        )
+    lines += [
+        _line(f"Publication {n} sur toute la largeur de la page", 40, 310 + 12 * n, 500)
+        for n in range(3)
+    ]
+    page = reading.Page(1, 595, 842, lines)
+    lanes = structure.find_lanes(page)
+    assert len(lanes) == 2 and 190 < lanes[0][1] < 230, lanes
+
+
+def test_scan_bullets_and_icons_read_as_letters_are_recognised() -> None:
+    from app.services.clone import scan
+
+    # Les mesures d'un vrai scan : une puce de 3 pt suivie d'un blanc deux fois plus large.
+    bullet = [
+        ("e", 275, 100, 2.9, 2.9),
+        ("Conception", 284.6, 98, 40, 8),
+        ("des", 328, 98, 12, 8),
+        ("pièces", 343.4, 98, 22, 8),
+    ]
+    icon = [("GC", 30, 96, 15, 15), ("06.00.00.00.00", 56, 100, 50, 8)]
+    word = [("R", 30, 98, 6, 8), ("Studio", 40, 98, 25, 8), ("(Statistiques)", 69, 98, 45, 8)]
+    assert scan._glyph(bullet, 0) == "marker"
+    assert scan._glyph(icon, 0) == "icon"
+    assert scan._glyph(word, 0) is None

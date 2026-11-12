@@ -35,6 +35,8 @@ VOCABULARY = (
 )  # fmt: skip
 
 BULLETS = "•·▪■□◦●○‣–—-➢➤►▸▹✓✔❖◆◇★☆"
+# Entre deux morceaux d'une même ligne, dans le texte donné à l'IA.
+SEPARATOR = "⟶"
 # Les puces des polices de symboles (Symbol, Wingdings), dans la zone privée d'Unicode.
 PRIVATE_BULLETS = {"": "•", "": "▪", "": "➢", "": "❖", "": "✓"}
 
@@ -112,60 +114,103 @@ def lanes_of(lanes: list[tuple[float, float]], x0: float, x1: float) -> list[int
 # ─── Les colonnes ────────────────────────────────────────────────────────────
 
 
+def _stretches(lines: list[Line], x: float, top: float, bottom: float) -> list[tuple[float, float]]:
+    """Les hauteurs où aucune ligne ne traverse l'abscisse ``x``."""
+    crossing = sorted((line.top, line.bottom) for line in lines if line.x0 + 1 < x < line.x1 - 1)
+    out = []
+    y = top
+    for a, b in crossing:
+        if a > y:
+            out.append((y, a))
+        y = max(y, b)
+    if bottom > y:
+        out.append((y, bottom))
+    return out
+
+
 def find_lanes(page: Page) -> list[tuple[float, float]]:
-    """Les colonnes d'une page : séparées par un couloir que presque aucune ligne ne traverse,
-    avec assez de lignes de chaque côté, à la même hauteur."""
+    """Les colonnes d'une page : séparées par un couloir vertical qu'aucune ligne ne traverse
+    sur une bonne hauteur, avec des lignes des deux côtés. Un en-tête ou un bloc pleine largeur
+    (des publications en bas de page) peut le traverser au-dessus ou en dessous."""
     lines = [line for line in page.lines if line.x1 - line.x0 > 2]
     if len(lines) < 6:
         return [(0.0, page.width)]
+    top = min(line.top for line in lines)
+    bottom = max(line.bottom for line in lines)
+    extent = bottom - top
+    tall = max(60.0, 0.3 * extent)
+
+    def column_band(x: float) -> tuple[float, float] | None:
+        best = None
+        for y0, y1 in _stretches(lines, x, top, bottom):
+            if y1 - y0 < tall:
+                continue
+            inside = [line for line in lines if line.top >= y0 - 1 and line.bottom <= y1 + 1]
+            left = [line for line in inside if line.x1 <= x]
+            right = [line for line in inside if line.x0 >= x]
+            if len(left) < max(3, 0.12 * len(inside)) or len(right) < max(3, 0.12 * len(inside)):
+                continue
+            # Côte à côte : au moins trois lignes de chaque côté sur une même hauteur.
+            lo = max(min(line.top for line in left), min(line.top for line in right))
+            hi = min(max(line.bottom for line in left), max(line.bottom for line in right))
+            beside = [
+                [line for line in side if line.bottom > lo and line.top < hi]
+                for side in (left, right)
+            ]
+            if hi - lo < max(40.0, 0.2 * extent) or min(len(b) for b in beside) < 3:
+                continue
+            if best is None or y1 - y0 > best[1] - best[0]:
+                best = (y0, y1)
+        return best
+
     width = int(page.width)
-    crossing = [0] * (width + 1)
-    for line in lines:
-        for x in range(max(0, int(line.x0) + 1), min(width, int(line.x1))):
-            crossing[x] += 1
-    limit = max(1, round(0.06 * len(lines)))
+    bands = {x: column_band(x) for x in range(0, width + 1, 2)}
     gutters: list[float] = []
     x = 0
     while x <= width:
-        if crossing[x] > limit:
-            x += 1
+        if bands.get(x) is None:
+            x += 2
             continue
         start = x
-        while x <= width and crossing[x] <= limit:
-            x += 1
-        end = x - 1
+        while x <= width and bands.get(x) is not None:
+            x += 2
+        end = x - 2
         if end - start < 6:
             continue
-        left = [line for line in lines if line.x1 <= start + 1]
-        right = [line for line in lines if line.x0 >= end - 1]
-        if len(left) < 0.12 * len(lines) or len(right) < 0.12 * len(lines):
-            continue
+        # Le vrai couloir : là où la hauteur libre est la plus grande (plus à gauche, de courtes
+        # lignes de la colonne s'arrêtent tôt et le couloir paraît plus large qu'il n'est).
+        heights = {k: bands[k][1] - bands[k][0] for k in range(start, end + 1, 2) if bands.get(k)}
+        tallest = max(heights.values())
+        kept = [k for k, h in heights.items() if h >= 0.95 * tallest]
+        start, end = min(kept), max(kept)
+        middle = start + ((end - start) // 4) * 2
+        y0, y1 = bands[middle] or bands[start]
+        inside = [line for line in lines if line.top >= y0 - 1 and line.bottom <= y1 + 1]
+        left = [line for line in inside if line.x1 <= start + 1]
+        right = [line for line in inside if line.x0 >= end - 1]
         # Une vraie colonne a de la matière (15 % des lettres) ou un titre de rubrique ; des
         # dates ou une grille de mots-clés seules n'en font pas une.
-        letters = sum(len(line.text) for line in lines) or 1
+        # (À droite, les lignes qui commencent au bord du couloir : pas celles d'une autre
+        # colonne plus loin.)
+        letters = sum(len(line.text) for line in inside) or 1
+        sides = (left, [line for line in right if line.x0 <= end + 60])
         substantial = [
             sum(len(line.text) for line in side) >= 0.15 * letters
             or any(vocabulary(line.text) and len(line.text) <= 48 for line in side)
-            for side in (left, right)
+            for side in sides
         ]
         if not all(substantial):
             continue
-        # Côte à côte : des lignes des deux côtés à la même hauteur.
-        lo = max(min(line.top for line in left), min(line.top for line in right))
-        hi = min(max(line.bottom for line in left), max(line.bottom for line in right))
-        extent = max(line.bottom for line in lines) - min(line.top for line in lines)
-        if hi - lo < max(60.0, 0.3 * extent):
-            continue
         # Des dates alignées à droite ne sont pas une colonne : elles finissent toutes au même
         # bord, commencent n'importe où, et chacune est sur la ligne d'un intitulé à sa gauche.
-        nearest = [line for line in lines if start - 1 <= line.x0 < end + 60 and line.x1 > end]
+        nearest = [line for line in inside if start - 1 <= line.x0 < end + 60 and line.x1 > end]
         if len(nearest) >= 2:
             ends = [line.x1 for line in nearest]
             starts = [line.x0 for line in nearest]
             paired = [
                 line
                 for line in nearest
-                if any(abs(o.baseline - line.baseline) < 1.5 and o.x1 < line.x0 for o in lines)
+                if any(abs(o.baseline - line.baseline) < 1.5 and o.x1 < line.x0 for o in inside)
             ]
             if (
                 max(ends) - min(ends) < 2.5
@@ -222,7 +267,13 @@ def vocabulary(text: str) -> bool:
     """Un titre de rubrique connu : il commence par un mot de rubrique, ou il est court et
     en contient un (« Mes compétences », « Langues parlées »)."""
     k = key(text)
-    return any(k.startswith(word) or (word in k and len(k) <= 26) for word in VOCABULARY)
+    # Une première lettre perdue par la lecture d'un scan (« OMPÉTENCES ») compte aussi.
+    return any(
+        k.startswith(word)
+        or (word in k and len(k) <= 26)
+        or (len(word) >= 6 and k.startswith(word[1:]) and len(k) <= 26)
+        for word in VOCABULARY
+    )
 
 
 def _lane_bodies(page: Page, page_lanes: list[tuple[float, float]], default: tuple) -> dict:
@@ -416,7 +467,7 @@ def analyse(pages: list[Page], extra_titles: list[str] | None = None) -> Structu
 
 def _text(lines: list[Line]) -> list[str]:
     """Des lignes (dans l'ordre de lecture) en texte : les segments d'une même ligne de base
-    séparés par « | »."""
+    séparés par « ⟶ » (un signe qu'aucun CV n'emploie : l'IA ne le confond pas avec le texte)."""
     rows: list[list[Line]] = []
     for line in lines:
         if rows and abs(rows[-1][0].baseline - line.baseline) < 2.5:
@@ -432,7 +483,7 @@ def _text(lines: list[Line]) -> list[str]:
             if is_marker(first):
                 text = "• " + text[len(first) :].strip()
             parts.append(text)
-        out.append(" | ".join(parts))
+        out.append(f" {SEPARATOR} ".join(parts))
     return out
 
 

@@ -206,6 +206,8 @@ class Locator:
             hit = self.find(k, self.region_for(sid))
             if hit is None:
                 hit = self.find(k, self.everything)
+            if hit is None:
+                hit = self.scattered(strip_marks(text), self.region_for(sid))
             if hit is None and len(k) >= 12:
                 hit = self.fuzzy(k, self.region_for(sid)) or self.fuzzy(k, self.everything)
             if hit is not None:
@@ -235,6 +237,35 @@ class Locator:
         indexes = region.owner[s : s + len(k)]
         # Les signes entre les mots du champ (« 2022 – 2024 ») lui appartiennent aussi.
         return [region.words[i] for i in range(min(indexes), max(indexes) + 1)]
+
+    def scattered(self, text: str, lines: list[Line]) -> list[Word] | None:
+        """Un champ écrit en morceaux qui ne se suivent pas dans l'ordre de lecture (« 2025 »
+        à droite, « Présent » sur la ligne d'en dessous) : ses mots un à un, proches les uns
+        des autres (deux lignes au plus)."""
+        tokens = [key(t) for t in text.split() if key(t)]
+        if len(tokens) < 2 or not lines:
+            return None
+        free = [w for line in lines for w in line.words if key(w.text) and id(w) not in self.used]
+        for first in [w for w in free if key(w.text) == tokens[0]]:
+            chosen = [first]
+            for token in tokens[1:]:
+                last = chosen[-1]
+                nearby = [
+                    w
+                    for w in free
+                    if w not in chosen
+                    and key(w.text) == token
+                    and -0.5 * last.size <= w.top - last.top <= 2.6 * last.size
+                    and abs(w.x0 - last.x0) < 25 * last.size
+                ]
+                if not nearby:
+                    break
+                chosen.append(
+                    min(nearby, key=lambda w: (abs(w.top - last.top), abs(w.x0 - last.x1)))
+                )
+            if len(chosen) == len(tokens):
+                return chosen
+        return None
 
     def fuzzy(self, k: str, lines: list[Line]) -> list[Word] | None:
         """Le texte presque identique (une lettre changée par l'IA) : 90 % des lettres."""

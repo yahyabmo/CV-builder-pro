@@ -42,7 +42,7 @@ function Shell({ title, back, children }: { title: string; back?: () => void; ch
         <h1 className="truncate text-[13px] font-semibold tracking-tight">{title}</h1>
       </header>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-7">{children}</div>
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-7">{children}</div>
       </ScrollArea>
     </div>
   )

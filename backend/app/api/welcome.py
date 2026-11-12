@@ -96,6 +96,10 @@ class CloneOut(BaseModel):
     fonts: list[CloneFont] = Field(default_factory=list)
     kept: list[str] = Field(default_factory=list)
     differences: list[str] = Field(default_factory=list)
+    # Le contrôle mot à mot est quasi parfait : le clone est proposé par défaut. Sinon, un
+    # avertissement, et « Proche du mien » d'abord.
+    recommended: bool = True
+    warning: str | None = None
 
 
 class ApplyOut(BaseModel):
@@ -367,9 +371,24 @@ async def clone_preview(import_id: str, body: PreviewIn) -> CloneOut:
             "CV scanné : le texte est lu par reconnaissance de caractères et la police est "
             "devinée ; relis bien chaque rubrique",
         )
+    if scanned:
+        recommended = measured.score >= 93 and not diff.overlaps
+    else:
+        recommended = (
+            measured.score >= 97
+            and not diff.missing
+            and not diff.overlaps
+            and not diff.overflow
+            and diff.in_place >= 0.98
+        )
     return CloneOut(
         available=True,
         ok=True,
+        recommended=recommended,
+        warning=None
+        if recommended
+        else "Ce clone n'est pas assez fidèle à ton PDF (voir ci-dessous) : relis-le de près, "
+        "ou choisis « Proche du mien ».",
         likeness=measured.score,
         fonts=[
             CloneFont(pdf=pdf, name=fonts.get(font_id).name, badge=badge)

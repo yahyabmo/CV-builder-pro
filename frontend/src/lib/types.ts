@@ -728,6 +728,8 @@ export interface CloneResult {
   fonts: { pdf: string; name: string; badge: string }[]
   kept: string[]
   differences: string[]
+  recommended?: boolean
+  warning?: string | null
 }
 
 export interface ApplyBaseResult {

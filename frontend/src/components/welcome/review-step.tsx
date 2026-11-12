@@ -72,6 +72,8 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
   const [shape, setShape] = useState<'clone' | 'mine' | 'app'>('clone')
   const [clone, setClone] = useState<CloneState>({ status: 'idle' })
   const cloned = useRef<string | null>(null)
+  // La forme choisie à la main : un clone peu fidèle ne la remplace pas.
+  const shapeChosen = useRef(false)
   // Le style repéré dans le PDF : gardé par défaut, élément par élément.
   const [findings, setFindings] = useState<StyleFinding[] | null>(null)
   const [keep, setKeep] = useState<ReadonlySet<string>>(() => new Set())
@@ -103,7 +105,11 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
     setClone({ status: 'running' })
     try {
       const out = await api.cloneImport(id, from)
-      if (cloned.current === key) setClone({ status: 'done', result: out, version: Date.now() })
+      if (cloned.current === key) {
+        setClone({ status: 'done', result: out, version: Date.now() })
+        // Un clone que le contrôle juge peu fidèle n'est pas proposé d'abord.
+        if (out.recommended === false && !shapeChosen.current) setShape('mine')
+      }
       return out
     } catch (error) {
       if (cloned.current === key) setClone({ status: 'error', message: (error as Error).message })
@@ -242,6 +248,7 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
                     role="radio"
                     aria-checked={shape === value}
                     onClick={() => {
+                      shapeChosen.current = true
                       setShape(value)
                       if (value === 'clone' && clone.status !== 'running' && cloned.current !== JSON.stringify(final())) void runClone(final())
                     }}

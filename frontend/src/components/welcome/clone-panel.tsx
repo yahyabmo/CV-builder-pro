@@ -63,6 +63,11 @@ export function ClonePanel({ id, state, retry, Pdf }: { id: string; state: Clone
         <span className="text-[12px] text-muted-foreground">Glisse pour passer de ton PDF au clone.</span>
       </div>
       <div className="flex min-w-0 flex-[999_1_260px] flex-col gap-4">
+        {result.warning && (
+          <p role="alert" className="rounded-xl border border-status-interview/30 bg-status-interview-soft px-4 py-3 text-[13px] text-status-interview">
+            {result.warning}
+          </p>
+        )}
         <div className={cn('flex flex-col gap-1 rounded-xl px-4 py-3', tone)}>
           <span className="text-[12px] font-medium">Ressemblance avec ton PDF</span>
           <span className="font-mono text-[24px] font-semibold tabular-nums" aria-label={`Ressemblance : ${result.likeness} sur 100`}>

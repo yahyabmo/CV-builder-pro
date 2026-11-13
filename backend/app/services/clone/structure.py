@@ -305,12 +305,15 @@ def find_titles(pages: list[Page], lanes: list[list[tuple[float, float]]]) -> li
             if text[-1] in ".,;" or is_marker(line.words[0].text):
                 continue
             mine = set(lanes_of(page_lanes, line.x0, line.x1))
+            # Seul sur sa ligne, ou à côté d'un autre nom de rubrique du même style (« LANGUES »
+            # et « CENTRES D'INTÉRÊT » côte à côte en bas de page).
             beside = [
                 other
                 for other in page.lines
                 if other is not line
                 and abs(other.baseline - line.baseline) < 2.5
                 and mine & set(lanes_of(page_lanes, other.x0, other.x1))
+                and not (vocabulary(other.text) and _style(other) == _style(line))
             ]
             if beside:
                 continue
@@ -352,13 +355,16 @@ def find_titles(pages: list[Page], lanes: list[list[tuple[float, float]]]) -> li
         # Des titres de postes en gras : nombreux, sans mot de rubrique.
         if hits == 0:
             score -= 2
-        scored.append((score, hits, style, members))
+        # Que des noms de rubrique, détachés (capitales, plus grands, ornés) : des titres,
+        # même seuls de leur style (« À PROPOS » d'une autre couleur dans la colonne de côté).
+        named = hits == n and (style[4] or size_ratio > 1.05 or any(d for _, _, d in members))
+        scored.append((score, hits, style, members, named))
     if not scored:
         return []
     scored.sort(key=lambda s: -s[0])
     best = scored[0][0]
-    chosen = [s for s in scored if s is scored[0] or (s[1] >= 1 and s[0] >= 0.5 * best)]
-    titles = [line for _, _, _, members in chosen for line, _, _ in members]
+    chosen = [s for s in scored if s is scored[0] or (s[1] >= 1 and s[0] >= 0.5 * best) or s[4]]
+    titles = [line for _, _, _, members, _ in chosen for line, _, _ in members]
     return titles
 
 
@@ -419,7 +425,12 @@ def analyse(pages: list[Page], extra_titles: list[str] | None = None) -> Structu
                 # posée à la même hauteur, sinon le titre le plus proche au-dessus.
                 pending.append(line)
                 continue
-            owner = max(options, key=lambda t: t.baseline, default=None)
+            # Le titre juste au-dessus ; deux titres côte à côte : celui au-dessus de la ligne.
+            owner = None
+            if options:
+                top = max(t.baseline for t in options)
+                level = [t for t in options if t.baseline >= top - 2.5]
+                owner = min(level, key=lambda t: abs(t.x0 - line.x0))
             if owner is None and page.number > 1:
                 # Le haut d'une page suivante continue la dernière rubrique de sa colonne.
                 earlier = [

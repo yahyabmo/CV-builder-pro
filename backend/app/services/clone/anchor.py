@@ -7,6 +7,7 @@ unité garde ses lignes exactes, sa boîte pour couler si le texte change, sa co
 l'écart qui la sépare de l'unité d'avant.
 """
 
+import re
 import statistics
 import subprocess
 import tempfile
@@ -208,12 +209,83 @@ def _background(page: Page, folder: Path | None) -> str | None:
     return name
 
 
+def _ink_below(image, scale: float, left: float, right: float, bottom: float, high: float) -> float:
+    """Le bas de l'encre qui suit une ligne de près (un filet, un trait), sans aller jusqu'au
+    bloc suivant : 0 s'il n'y en a pas."""
+    from app.services.clone.scan import _ground
+
+    x0, x1 = max(0, int(left * scale)), min(image.width, int(right * scale))
+    if x1 - x0 < 6:
+        return 0.0
+    ground = _ground(image, (x0, int((bottom - high) * scale), x1, int(bottom * scale)))
+
+    def inked(y: int) -> bool:
+        hits = 0
+        for x in range(x0, x1, 3):
+            pixel = image.getpixel((x, y))
+            if sum(abs(pixel[i] - ground[i]) for i in range(3)) > 90:
+                hits += 1
+        return hits >= max(3, (x1 - x0) // 300)
+
+    start = int((bottom + 1.0) * scale)
+    reach = min(image.height, int((bottom + 1.2 * high) * scale))
+    first = next((y for y in range(start, reach) if inked(y)), None)
+    if first is None:
+        return 0.0
+    last, y, blank = first, first, 0
+    stop = min(image.height, first + int(2.0 * high * scale))
+    while y < stop and blank <= 2:
+        if inked(y):
+            last, blank = y, 0
+        else:
+            blank += 1
+        y += 1
+    if y >= stop:
+        return 0.0  # un bloc qui continue : ce n'est pas un filet
+    return (last + 1) / scale + 0.6
+
+
+def _punctuation(parts: list[Part], groups: list[list[Word]], content: CVContent) -> list[Part]:
+    """Les signes collés à un champ sur la page mais absents de son texte (« discrétion, »)
+    vont dans le séparateur qui le suit ; un séparateur que le champ d'avant contient déjà
+    (« Qualités : » puis « : ») ne se répète pas. Pour le texte qui coule quand l'unité change."""
+    out: list[Part] = []
+    for i, (part, group) in enumerate(zip(parts, groups, strict=True)):
+        if part.path is None:
+            previous = out[-1] if out else None
+            core = part.text.strip()
+            if previous is not None and previous.path and core:
+                value = (F.get(content, previous.path) or "").rstrip()
+                if value.endswith(core):
+                    part = part.model_copy(
+                        update={"text": " " if part.text != part.text.strip() else ""}
+                    )
+                    if not part.text:
+                        continue
+            out.append(part)
+            continue
+        out.append(part)
+        if not group:
+            continue
+        tail = re.search(r"[,;:.]+$", group[-1].text)
+        value = (F.get(content, part.path) or "").rstrip()
+        if tail is None or value.endswith(tail.group()):
+            continue
+        following = parts[i + 1] if i + 1 < len(parts) else None
+        if following is not None and following.path is None:
+            if not following.text.lstrip().startswith(tail.group()):
+                parts[i + 1] = following.model_copy(update={"text": tail.group() + following.text})
+        else:
+            out.append(Part(text=tail.group(), ink=part.ink))
+    return out
+
+
 def _erasers(page: Page, units: list[Unit], structure: Structure, folder: Path) -> None:
     """Pour chaque unité d'un scan : sa bande d'image (ses mots, et ce qui l'accompagne au-dessus
     jusqu'à l'unité précédente : une puce, une icône, une étiquette que la lecture a manquée),
     à déplacer telle quelle si l'unité descend ; et les boîtes de ses mots, à couvrir si son
     texte change."""
-    from PIL import Image
+    from PIL import Image, ImageChops
 
     from app.services.clone.scan import _ground
 
@@ -223,7 +295,7 @@ def _erasers(page: Page, units: list[Unit], structure: Structure, folder: Path) 
     mine = [u for u in units if u.page == page.number and getattr(u, "_boxes", None)]
     extent = {}
     for u in mine:
-        boxes = u._boxes  # type: ignore[attr-defined]
+        boxes = u._all  # type: ignore[attr-defined]
         extent[u.id] = (
             min(b[0] for b in boxes),
             min(b[1] for b in boxes),
@@ -261,7 +333,26 @@ def _erasers(page: Page, units: list[Unit], structure: Structure, folder: Path) 
             and extent[o.id][2] > left
         ]
         upper = max(above) + 0.6 if above else top - 3
-        lower = bottom + 1.0
+        # Vers le bas : les jambages (p, g, j) que la boîte lue n'a pas toujours, sans toucher
+        # l'unité d'en dessous.
+        below = [
+            extent[o.id][1]
+            for o in mine
+            if o is not u
+            and own & set(o.lanes)
+            and extent[o.id][1] >= bottom - 0.5
+            and extent[o.id][0] < right
+            and extent[o.id][2] > left
+        ]
+        high = statistics.median(b[3] - b[1] for b in u._all)  # type: ignore[attr-defined]
+        lower = bottom + 0.35 * high
+        if below:
+            lower = min(lower, min(below) - 0.6)
+        else:
+            # La dernière ligne de sa colonne : l'encre juste dessous (un filet de fin de
+            # rubrique) descend avec elle, plutôt que de rester sous le texte décalé.
+            lower = max(lower, _ink_below(image, scale, left, right, bottom, high))
+        lower = max(lower, bottom + 1.0)
         box_px = (
             max(0, int(left * scale)),
             max(0, int(upper * scale)),
@@ -271,12 +362,40 @@ def _erasers(page: Page, units: list[Unit], structure: Structure, folder: Path) 
         if box_px[2] - box_px[0] < 2 or box_px[3] - box_px[1] < 2:
             continue
         crop = image.crop(box_px)
-        name = f"{ASSETS}/bande-{page.number}-{u.id}.jpg"
-        crop.save(folder / name, "JPEG", quality=92)
         border = [crop.getpixel((x, 0)) for x in range(0, crop.width, 3)] + [
             crop.getpixel((x, crop.height - 1)) for x in range(0, crop.width, 3)
         ]
         color = tuple(int(statistics.median(p[i] for p in border)) for i in range(3))
+        # Seulement l'encre : le fond devient transparent, la bande ne cache jamais rien.
+        alpha = (
+            ImageChops.difference(crop, Image.new("RGB", crop.size, color))
+            .convert("L")
+            .point(lambda v: 0 if v < 14 else min(255, (v - 14) * 255 // 56))
+        )
+        name = f"{ASSETS}/bande-{page.number}-{u.id}.png"
+        inked = crop.copy()
+        inked.putalpha(alpha)
+        inked.save(folder / name, "PNG", optimize=True)
+        # Le signe de puce (ou l'icône) seul, sans les mots : pour une unité qui change.
+        sign_alpha = alpha.copy()
+        for bx0, btop, bx1, bbottom in u._boxes:  # type: ignore[attr-defined]
+            pad = max(1.0, 0.1 * (bbottom - btop))
+            sign_alpha.paste(
+                0,
+                (
+                    int((bx0 - pad) * scale) - box_px[0],
+                    int((btop - pad) * scale) - box_px[1],
+                    int((bx1 + pad) * scale) + 1 - box_px[0],
+                    int((bbottom + pad) * scale) + 1 - box_px[1],
+                ),
+            )
+        sign = ""
+        mark = sign_alpha.point(lambda v: 255 if v > 100 else 0).getbbox()
+        if mark is not None and (mark[2] - mark[0]) * (mark[3] - mark[1]) >= 4:
+            sign = f"{ASSETS}/signe-{page.number}-{u.id}.png"
+            alone = crop.copy()
+            alone.putalpha(sign_alpha)
+            alone.save(folder / sign, "PNG", optimize=True)
         u.strip = [
             round(box_px[0] / scale, 2),
             round(box_px[1] / scale, 2),
@@ -284,10 +403,14 @@ def _erasers(page: Page, units: list[Unit], structure: Structure, folder: Path) 
             round(box_px[3] / scale, 2),
             "".join(f"{c:02X}" for c in color),
             name,
+            sign,
         ]
-        for bx0, btop, bx1, bbottom in u._boxes:  # type: ignore[attr-defined]
+        # Les boîtes à effacer : le signe de puce d'abord (s'il y en a un), puis les mots.
+        marker_box = [b for b in u._all if b not in u._boxes]  # type: ignore[attr-defined]
+        for bx0, btop, bx1, bbottom in (marker_box[:1] if u.marker is not None else []) + u._boxes:  # type: ignore[attr-defined]
+            # Large sur les côtés, à peine en hauteur : la ligne d'au-dessus garde ses jambages.
             pad = max(1.5, 0.12 * (bbottom - btop))
-            box = (bx0 - pad, btop - pad, bx1 + pad, bbottom + pad)
+            box = (bx0 - pad, btop - 0.7, bx1 + pad, bbottom + 0.7)
             r, g, b = _ground(image, tuple(int(v * scale) for v in box))  # type: ignore[arg-type]
             u.erase.append([round(v, 2) for v in box] + [f"{r:02X}{g:02X}{b:02X}"])
 
@@ -414,6 +537,7 @@ def infer(
             dominant = _dominant(group)
             part.ink = inks.of(dominant, _upper(group, F.get(content, part.path) or ""))
             part.url = next((w.url for w in group if w.url), None)
+        parts = _punctuation(parts, groups_of, content)
         paths = [p.path for p in parts if p.path]
         first_path = paths[0] if paths else None
         # Les lignes exactes, mot par mot (les icônes de police deviennent des images).
@@ -587,7 +711,10 @@ def infer(
             mark=_mark(first_path, content),
         )
         unit._snaps = snaps  # type: ignore[attr-defined]
-        unit._boxes = [(w.x0, w.top, w.x1, w.bottom) for w in words]  # type: ignore[attr-defined]
+        # Un scan : les boîtes des mots (sans le signe de puce, qui reste dans l'image), et
+        # toutes, signe compris (les bords de sa bande d'image).
+        unit._boxes = [(w.x0, w.top, w.x1, w.bottom) for w in words if w is not marker_word]  # type: ignore[attr-defined]
+        unit._all = [(w.x0, w.top, w.x1, w.bottom) for w in words]  # type: ignore[attr-defined]
         units.append(unit)
 
     # ─── Les écarts : depuis l'unité précédente de la même colonne ───
@@ -614,6 +741,7 @@ def infer(
             for p in pages
         ],
         lanes=[[(round(a, 2), round(b, 2)) for a, b in lanes] for lanes in structure.lanes],
+        snapshot={path: text for path, text, _ in F.paths(content)},
     )
 
     # ─── Formes, images, liens : fixes, ou attachés à une unité ───

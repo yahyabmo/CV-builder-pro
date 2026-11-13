@@ -161,8 +161,18 @@ _WEIGHT = re.compile(
     r"|Italic|Oblique|BoldItalic|BoldOblique|MT|PS|PSMT)+$",
     re.I,
 )
-_BOLD = re.compile(r"bold|black|heavy|semibold|demibold|extrabold|^CMBX|^CMB\d|^CMSSBX", re.I)
-_ITALIC = re.compile(r"italic|oblique|^CMTI|^CMSL|^CMBXTI|^CMBXSL|^CMSSI|^CMITT|^CMSLTT", re.I)
+_BOLD = re.compile(
+    r"bold|black|heavy|semibold|demibold|extrabold|^CMBX|^CMB\d|^CMSSBX|^SF(?:BX|BI|BL|RB|XC|SX|XI|XL)\d",
+    re.I,
+)
+_ITALIC = re.compile(
+    r"italic|oblique|^CMTI|^CMSL|^CMBXTI|^CMBXSL|^CMSSI|^CMITT|^CMSLTT|^SF(?:TI|SL|BI|BL|RI|RL|SI|SO|IT|ST|XI|XL)\d",
+    re.I,
+)
+# Les polices cm-super de LaTeX (« SFRM1000 », « SFBX1200 ») : du Computer Modern, en T1.
+_SF = re.compile(
+    r"^SF(RM|BX|TI|SL|BI|BL|RB|RI|RL|CC|XC|SC|SS|SX|SI|SO|TT|IT|ST|TC|XI|XL)\d+$", re.I
+)
 
 
 # Les polices de TeX : Computer Modern (une famille par graisse) → Latin Modern.
@@ -180,6 +190,14 @@ def family_name(raw: str) -> str:
         if kind == "CSC":
             return "LMRomanCaps"
         return "LMSans" if kind.startswith("SS") else "LMMono" if "TT" in kind else "LMRoman"
+    sf = _SF.match(name.split("-")[0])
+    if sf:
+        kind = sf.group(1).upper()
+        if kind in ("CC", "XC", "SC"):
+            return "LMRomanCaps"
+        if kind in ("SS", "SX", "SI", "SO"):
+            return "LMSans"
+        return "LMMono" if kind in ("TT", "IT", "ST", "TC") else "LMRoman"
     lm = _LM.match(name)
     if lm:
         return "LM" + lm.group(1).capitalize() + ("Caps" if lm.group(2) else "")

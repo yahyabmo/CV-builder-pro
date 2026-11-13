@@ -22,6 +22,11 @@ from app.latex.compile import BUILD
 
 TEX = "main.tex"
 SYNCTEX = "main.synctex.gz"
+# Un CV cloné : LaTeX y écrit la boîte de chaque unité, une fois posée (voir clone/render).
+POSITIONS = "main.pos"
+_CLONE_HEADER = "% CV cloné"
+# Un point TeX (pt) en point PostScript (bp).
+_BP_PER_PT = 72 / 72.27
 
 _MARK = re.compile(r"^%@ (\w+)((?: [\w-]+)*)$")
 # « (1,82:h,v:W,H,D » : sorte, fichier, ligne, position, puis taille d'une boîte.
@@ -189,7 +194,8 @@ def frame(nodes: list[Node], start: int, end: int | None) -> Box | None:
     for node in nodes:
         if node.kind not in "([" and node.parent is not None and within(node.line):
             parent = nodes[node.parent]
-            if parent.kind == "(" and parent.height < _TALLEST_BP:
+            # Une ligne écrasée (hauteur nulle) est un calque de la page entière, pas du texte.
+            if parent.kind == "(" and 0 < parent.height < _TALLEST_BP:
                 chosen.add(node.parent)
     return union([nodes[i] for i in chosen])
 
@@ -258,10 +264,127 @@ def span(marks: list[Mark], index: int) -> tuple[int, int | None]:
     return start, end
 
 
+@dataclass
+class Placed:
+    """Une unité d'un CV cloné, là où LaTeX l'a posée."""
+
+    line: int
+    page: int
+    unit: str
+    x0: float
+    x1: float
+    top: float
+    bottom: float
+
+    def contains(self, x: float, y: float, slack: float = 0) -> bool:
+        across = self.x0 - slack <= x <= self.x1 + slack
+        return across and self.top - slack <= y <= self.bottom + slack
+
+    @property
+    def area(self) -> float:
+        return (self.x1 - self.x0) * (self.bottom - self.top)
+
+
+def _length(text: str) -> float:
+    return float(text.removesuffix("pt")) * _BP_PER_PT
+
+
+def positions(folder: Path) -> list[Placed] | None:
+    """Les unités posées d'un CV cloné ; None si ce n'est pas un clone (ou s'il n'est pas
+    encore compilé avec ses positions)."""
+    tex = folder / TEX
+    file = folder / BUILD / POSITIONS
+    if not tex.is_file() or not file.is_file():
+        return None
+    with tex.open(encoding="utf-8") as handle:
+        if not handle.readline().startswith(_CLONE_HEADER):
+            return None
+    if file.stat().st_mtime_ns < tex.stat().st_mtime_ns:
+        return None
+    found = []
+    for raw in file.read_text(encoding="utf-8", errors="replace").splitlines():
+        bits = raw.split()
+        if len(bits) != 7:
+            continue
+        try:
+            found.append(
+                Placed(
+                    line=int(bits[0]),
+                    page=int(bits[1]),
+                    unit=bits[2],
+                    x0=float(bits[3]),
+                    x1=float(bits[4]),
+                    top=_length(bits[5]),
+                    bottom=_length(bits[6]),
+                )
+            )
+        except ValueError:
+            continue
+    return found
+
+
+def _same(a: Location, b: Location) -> bool:
+    """Deux unités du même cadre : la même entrée (ses puces comprises), la même rubrique
+    pour un titre, la même ligne de coordonnées, l'en-tête."""
+    if a.area != b.area:
+        return False
+    if a.area == "contact":
+        return a.line == b.line
+    if a.area == "section":
+        if a.section != b.section:
+            return False
+        return a.item is None or a.item == b.item
+    return True
+
+
+def _locate_clone(placed: list[Placed], marks: list[Mark], x: float, y: float, page: int):
+    here = [p for p in placed if p.page == page]
+    inside = [p for p in here if p.contains(x, y)] or [
+        p for p in here if p.contains(x, y, _NEAR_BP)
+    ]
+    if not inside:
+        return None
+    lines = [m[0] for m in marks]
+
+    def where(p: Placed) -> Location | None:
+        before = [i for i, line in enumerate(lines) if line <= p.line]
+        if not before:
+            return None
+        _, kind, args = marks[before[-1]]
+        return _location(kind, args)
+
+    clicked = min(inside, key=lambda p: p.area)
+    found = where(clicked)
+    if found is None:
+        return None
+    family = []
+    for p in here:
+        other = where(p)
+        if other is None or not _same(found, other):
+            continue
+        # L'en-tête et les coordonnées d'un clone peuvent être éclatés (le nom à droite,
+        # l'accroche ou l'adresse à gauche) : le cadre reste dans la colonne de la partie cliquée.
+        if found.area in ("header", "contact") and not (p.x0 < clicked.x1 and p.x1 > clicked.x0):
+            continue
+        family.append(p)
+    if family:
+        left = min(p.x0 for p in family) - 2
+        top = min(p.top for p in family) - 2
+        right = max(p.x1 for p in family) + 2
+        bottom = max(p.bottom for p in family) + 2
+        found.box = Box(
+            x=round(left, 2), y=round(top, 2), w=round(right - left, 2), h=round(bottom - top, 2)
+        )
+    return found
+
+
 def locate(folder: Path, x: float, y: float, page: int = 1) -> Location | None:
     """L'élément du contenu sous le point (x, y) de la page, en points depuis le haut gauche."""
     synctex = folder / BUILD / SYNCTEX
     tex = folder / TEX
+    placed = positions(folder)
+    if placed is not None:
+        return _locate_clone(placed, markers(tex.read_text(encoding="utf-8")), x, y, page)
     if not synctex.exists() or not tex.exists():
         return None
     nodes = nodes_of(synctex, page)

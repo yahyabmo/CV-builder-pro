@@ -16,8 +16,10 @@ Règles absolues :
   le recopie jamais dans un champ.
 - Une puce par élément de `bullets`, sans le signe de puce ; une puce coupée en
   fin de ligne reste une seule puce. Les projets aussi ont leurs `bullets`.
-- Les compétences gardent leurs groupes s'il y en a ; sinon, un seul groupe
-  nommé comme la rubrique du CV.
+- Les compétences gardent leurs groupes s'il y en a (« Langages : Python,
+  Java ») ; une liste de compétences sans groupes (une puce par compétence)
+  donne un groupe par puce, avec un `label` vide. Ne nomme jamais un groupe
+  comme la rubrique (« Compétences »).
 - Les coordonnées vont dans `contacts`, une par élément : ville, téléphone,
   email, liens, permis, mobilité.
 - `titles` : pour chaque rubrique remplie, son titre tel qu'écrit dans le CV,

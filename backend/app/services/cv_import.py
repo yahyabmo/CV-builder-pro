@@ -248,8 +248,8 @@ def _contacts(contacts: list[ImportedContact]) -> list[list[ContactItem]]:
 
 
 def _sentence(items: list[str]) -> str:
-    text = ", ".join(item.strip() for item in items if item.strip())
-    return text if not text or text[-1] in ".!?" else f"{text}."
+    """Les compétences d'un groupe, à la suite, telles qu'écrites (sans point ajouté)."""
+    return ", ".join(item.strip() for item in items if item.strip())
 
 
 def _experiences(items: list) -> list[ExperienceItem]:

@@ -96,8 +96,10 @@ class Unit(BaseModel):
     # Un scan : les boîtes de ses mots dans l'image (x0, y0, x1, y1, couleur du fond), à
     # effacer quand l'unité change ou se décale.
     erase: list[list] = Field(default_factory=list)
-    # Un scan : la bande d'image de l'unité (x0, y0, x1, y1, couleur du fond, fichier), déplacée
-    # telle quelle quand l'unité descend.
+    # Un scan : la bande d'image de l'unité (x0, y0, x1, y1, couleur du fond, fichier, et le
+    # fichier de son seul signe de puce ou icône, « » sans signe), déplacée telle quelle quand
+    # l'unité descend. Les bandes sont transparentes hors de l'encre (avant le 13/11 : opaques,
+    # sans signe à part).
     strip: list | None = None
 
 
@@ -181,6 +183,10 @@ class AnchoredLayout(BaseModel):
     # Le style de base pour ce qui n'existait pas sur la page (une rubrique ajoutée).
     body: int = 0
     title_ink: int | None = None
+    # Chaque champ écrit au moment du clonage (chemin → texte) : un champ rempli depuis, qui
+    # n'a pas de place sur la page (un niveau de langue, une date vides alors), rejoint une
+    # ligne de son entrée. None : un clone d'avant le 13/11.
+    snapshot: dict[str, str] | None = None
 
     def unit(self, unit_id: int) -> Unit:
         return self.units[unit_id]

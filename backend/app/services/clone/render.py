@@ -19,6 +19,7 @@ from app.latex.escape import escape, escape_url, rich
 from app.latex.render import mark
 from app.models.content import CVContent
 from app.services.clone import fields as F
+from app.services.clone import fonts as clone_fonts
 from app.services.clone.plan import AnchoredLayout, Glyph, Ink, Paint, Part, Unit
 
 LANES = "abcdefgh"
@@ -54,6 +55,16 @@ def _remap(path: str, item: int) -> str:
     return ".".join(bits)
 
 
+def _mark_of(path: str) -> str:
+    """Le repère du clic d'un champ de rubrique (une entrée ajoutée après le clonage)."""
+    bits = path.split(".")
+    if len(bits) < 2 or not bits[1].isdigit():
+        return "none"
+    if len(bits) >= 4 and bits[2] == "bullets":
+        return f"bullet {bits[0]} {bits[1]} {bits[3]}"
+    return f"item {bits[0]} {bits[1]}"
+
+
 @dataclass
 class _Band:
     """Des unités posées sur une même ligne de base, dans une même colonne."""
@@ -87,6 +98,41 @@ class Writer:
         self.fonts: set[str] = set()
         self.used_inks: set[int] = set()
         self.lanes = max((len(p) for p in layout.lanes), default=1) or 1
+        self.orphans = self._orphans()
+
+    def _orphans(self) -> dict[int, list[str]]:
+        """Les champs remplis depuis le clonage qui n'ont pas de place sur la page (vides
+        alors) : chacun rejoint une ligne de son entrée (unité → chemins ajoutés à sa fin)."""
+        snapshot = self.layout.snapshot
+        if snapshot is None:
+            return {}
+        placed = {p for u in self.layout.units for p in u.original}
+        out: dict[int, list[str]] = {}
+        for path, text, sid in F.paths(self.content):
+            if path in placed or snapshot.get(path) == text or ".bullets." in path:
+                continue
+            bits = path.split(".")
+            if bits[0] in ("name", "headline", "summary", "contact") or bits[-1] == "title":
+                continue
+            plan = self.layout.sections.get(sid or "")
+            if plan is None or len(bits) < 3 or not bits[1].isdigit():
+                continue
+            n = int(bits[1])
+            if n >= len(plan.items):
+                continue  # une entrée ajoutée : elle a déjà sa place (copie de ses voisines)
+            # Pas une puce ; une liste écrite à la suite (« Français, anglais ») reçoit le champ
+            # derrière son élément.
+            mates = [
+                self.layout.unit(i)
+                for i in plan.items[n].units
+                if self.layout.unit(i).role != "bullet"
+            ]
+            if not mates:
+                continue
+            single = [u for u in mates if len(u.items) < 2]
+            anchor = max(single or mates, key=lambda u: (u.y + u.end, u.x0))
+            out.setdefault(anchor.id, []).append(path)
+        return out
 
     # ─── Encres ───
     def color(self, hex_: str | None) -> str:
@@ -205,6 +251,7 @@ class Writer:
             lines.append(self.picture(self.photo, photo.box, photo.shape))
         if size.background:
             lines.append("\\cverasures")
+            lines.append("\\cvstrips")
         body = "\n".join(line for line in lines if line)
         if not body:
             return ""
@@ -264,19 +311,33 @@ class Writer:
             out.append(f"\\cvline{{{y}}}{{{words}}}")
         return "\n".join(out)
 
-    def lift(self, unit: Unit) -> str:
-        """Un scan, unité décalée : sa bande d'image effacée à sa place d'origine (sous tout le
-        texte) et posée à sa nouvelle hauteur, telle quelle."""
+    @staticmethod
+    def sign_of(unit: Unit) -> str:
+        """Le fichier du seul signe de puce (ou icône) de la bande d'un scan, s'il y en a un."""
+        return unit.strip[6] if unit.strip and len(unit.strip) > 6 else ""
+
+    def lift(self, unit: Unit, sign: bool = False) -> str:
+        """Un scan, unité décalée : sa bande d'image effacée à sa place d'origine et posée à sa
+        nouvelle hauteur, telle quelle (``sign`` : seulement son signe de puce, le texte change).
+        Trous et bandes sont dessinés avec le fond de la page, sous tout le texte."""
         if not unit.strip:
             return self.erase(unit)
-        x0, y0, x1, y1, color, file = unit.strip
+        x0, y0, x1, y1, color, file = unit.strip[:6]
         hole = (
             f"\\cverase{{\\fill[{self.color(color)}] ({x0:.2f},{y0:.2f}) rectangle "
             f"({x1:.2f},{y1:.2f});}}"
         )
-        y = f"\\dimexpr\\cvy-{bp(unit.y - y0)}\\relax"
-        image = f"\\cvstrip{{{bp(x0)}}}{{{y}}}{{{bp(x1 - x0)}}}{{{bp(y1 - y0)}}}{{{file}}}"
-        return hole + "\n" + image
+        if sign:
+            file = self.sign_of(unit)
+            if not file:
+                return hole
+        return hole + "\n" + self.place_strip(unit, file)
+
+    def place_strip(self, unit: Unit, file: str) -> str:
+        """Une image de la bande de l'unité, posée à sa hauteur d'aujourd'hui (``\\cvy``)."""
+        x0, y0, x1, y1 = unit.strip[:4]  # type: ignore[index]
+        y = f"\\cvy-{bp(unit.y - y0)}"
+        return f"\\cvstrip{{{bp(x0)}}}{{{y}}}{{{bp(x1 - x0)}}}{{{bp(y1 - y0)}}}{{{file}}}"
 
     def cover(self, unit: Unit) -> str:
         """Les mots d'origine d'une unité qui change, couverts à sa nouvelle hauteur (sa puce,
@@ -296,21 +357,26 @@ class Writer:
         )
 
     def remove(self, unit: Unit) -> str:
-        """Un scan, unité retirée : sa bande d'image effacée (ou, à défaut, ses mots)."""
+        """Un scan, unité retirée : ses mots et sa puce effacés (une bande d'avant le 13/11 :
+        toute la bande), sans toucher un filet ou un trait voisin."""
+        if unit.strip and len(unit.strip) > 6:
+            return self.erase(unit)
         if unit.strip:
-            x0, y0, x1, y1, color, _ = unit.strip
+            x0, y0, x1, y1, color = unit.strip[:5]
             return (
                 f"\\cverase{{\\fill[{self.color(color)}] ({x0:.2f},{y0:.2f}) rectangle "
                 f"({x1:.2f},{y1:.2f});}}"
             )
         return self.erase(unit)
 
-    def erase(self, unit: Unit) -> str:
+    def erase(self, unit: Unit, words_only: bool = False) -> str:
         """Efface de l'image d'un scan les mots d'origine d'une unité (repeints de la couleur
-        du fond autour d'eux)."""
+        du fond autour d'eux) ; ``words_only`` : pas son signe de puce (la première boîte)."""
         boxes = [
             f"\\fill[{self.color(c)}] ({x0:.2f},{y0:.2f}) rectangle ({x1:.2f},{y1:.2f});"
-            for x0, y0, x1, y1, c in unit.erase
+            for x0, y0, x1, y1, c in (
+                unit.erase[1:] if words_only and unit.marker is not None else unit.erase
+            )
         ]
         if not boxes:
             return ""
@@ -333,8 +399,9 @@ class Writer:
             body = f"\\href{{{escape_url(url)}}}{{{body}}}"
         return "{" + self.ink(part.ink) + " " + body + "}"
 
-    def parts_text(self, unit: Unit, paths: dict[str, str]) -> str:
-        """Le texte d'une unité qui coule : ses champs d'aujourd'hui et ses textes fixes."""
+    def parts_text(self, unit: Unit, paths: dict[str, str], extra: list[str] | None = None) -> str:
+        """Le texte d'une unité qui coule : ses champs d'aujourd'hui et ses textes fixes ;
+        ``extra`` : des champs sans place à elle, ajoutés à la fin."""
         pieces: list[tuple[str, bool]] = []  # (latex, est un champ)
         for part in unit.parts:
             if part.path is None:
@@ -359,9 +426,17 @@ class Writer:
                 if after and not after[0]:
                     continue
             out.append(latex)
+        main = next((p.ink for p in unit.parts if p.path), unit.parts[0].ink if unit.parts else 0)
+        for path in extra or []:
+            text = current(self.content, path)
+            if text:
+                ink = "{" + self.ink(main) + " "
+                out.append(
+                    ink + escape(" – ") + "}" + self.field_text(Part(path=path, ink=main), text)
+                )
         return "".join(out)
 
-    def list_text(self, unit: Unit, items: list[int]) -> str:
+    def list_text(self, unit: Unit, items: list[int], extra: list[str] | None = None) -> str:
         """Une liste écrite à la suite : le modèle du premier élément, pour chacun."""
         first = unit.items[0]
         template: list[Part] = []
@@ -404,7 +479,8 @@ class Writer:
         rendered = []
         for n in items:
             paths = {p.path: _remap(p.path, n) for p in template if p.path}
-            text = self.parts_text(Unit(**{**unit.model_dump(), "parts": template}), paths)
+            mine = [p for p in extra or [] if p.split(".")[1] == str(n)]
+            text = self.parts_text(Unit(**{**unit.model_dump(), "parts": template}), paths, mine)
             if text:
                 rendered.append(text)
         head = "".join(
@@ -423,7 +499,7 @@ class Writer:
         sign = ""
         if unit.marker is not None and marker:
             sign = f"\\cvline{{\\cvy}}{{{self.word(unit.marker.model_copy(update={'w': 0.0}))}}}\n"
-        width = max(unit.x1 - unit.x0, 10)
+        width = max(self.right_edge(unit) - unit.x0, 10)
         body = (
             f"{self.ink(main)}\\setlength\\baselineskip{{{bp(unit.leading)}}}"
             f"\\setlength\\lineskiplimit{{-\\maxdimen}}{lead}\\noindent{indent}"
@@ -432,6 +508,62 @@ class Writer:
         return (
             sign
             + f"\\cvpar{{{bp(unit.x0)}}}{{\\cvy}}{{{bp(width)}}}{{{bp(unit.ascent)}}}{{{body}}}"
+        )
+
+    def right_edge(self, unit: Unit) -> float:
+        """Le bord droit où coule une unité : le sien ; jusqu'au bord de sa colonne si elle
+        reçoit un champ sans place (sans toucher une voisine de la même ligne)."""
+        if unit.align != "left" or unit.id not in self.orphans:
+            return unit.x1
+        column = [
+            v
+            for v in self.layout.units
+            if v.page == unit.page and set(v.lanes) & set(unit.lanes) and v.role != "list"
+        ]
+        edge = max((v.x1 for v in column), default=unit.x1)
+        beside = [
+            v.x0 for v in column if v is not unit and abs(v.y - unit.y) < 1.5 and v.x0 >= unit.x1
+        ]
+        if beside:
+            edge = min(edge, min(beside) - 4)
+        return max(edge, unit.x1)
+
+    # ─── Où chaque unité est posée (le cadre d'un clic sur l'aperçu) ───
+    def extent(self, unit: Unit) -> tuple[float, float, float, float]:
+        """Les bords et la hauteur des lignes exactes d'une unité, depuis sa ligne de base."""
+        xs: list[float] = []
+        tops: list[float] = []
+        bottoms: list[float] = []
+        for row in unit.rows:
+            for g in row.words:
+                size = self.layout.inks[g.i].size if g.i < len(self.layout.inks) else 10.0
+                xs += [g.x, g.x + g.w]
+                tops.append(row.y + g.dy - 0.8 * size)
+                bottoms.append(row.y + g.dy + 0.25 * size)
+        if unit.marker is not None:
+            xs.append(unit.marker.x)
+        if not xs:
+            return unit.x0, unit.x1, -unit.ascent, 0.25 * unit.ascent
+        return min(xs), max(xs), min(tops), max(bottoms)
+
+    def position(self, page: int, unit: Unit, flowed: bool, added: bool = False) -> str:
+        """Une ligne de ``main.pos`` : la boîte de l'unité, après ses décalages (« v » : une
+        copie de l'unité pour un élément ajouté)."""
+        name = f"v{unit.id}" if added else str(unit.id)
+        if flowed:
+            main = next(
+                (p.ink for p in unit.parts if p.path), unit.parts[0].ink if unit.parts else 0
+            )
+            size = self.layout.inks[main].size if main < len(self.layout.inks) else unit.ascent
+            x0 = min(unit.x0, unit.marker.x) if unit.marker is not None else unit.x0
+            top = f"\\cvy-{bp(unit.ascent)}"
+            bottom = f"\\cvend+{bp(0.25 * size)}"
+            x1 = self.right_edge(unit)
+            return f"\\cvpos{{{page}}}{{{name}}}{{{x0:.2f}}}{{{x1:.2f}}}{{{top}}}{{{bottom}}}"
+        x0, x1, top, bottom = self.extent(unit)
+        return (
+            f"\\cvpos{{{page}}}{{{name}}}{{{x0:.2f}}}{{{x1:.2f}}}"
+            f"{{\\cvy+{bp(top)}}}{{\\cvy+{bp(bottom)}}}"
         )
 
     # ─── L'ordre des unités, avec les ajouts et les retraits ───
@@ -451,20 +583,26 @@ class Writer:
                 wanted += list(range(len(plan.items), len(section.items)))
             if not wanted:
                 return "removed", ""
+            extra = [] if band.virtual else self.orphans.get(unit.id, [])
             unchanged = wanted == list(range(min(unit.items), max(unit.items) + 1)) and all(
                 current(self.content, p) == text for p, text in unit.original.items()
             )
-            if unchanged and not band.virtual:
+            if unchanged and not extra and not band.virtual:
                 return "exact", ""
-            return "reflow", self.list_text(unit, wanted)
+            return "reflow", self.list_text(unit, wanted, extra)
         values = {p: current(self.content, paths.get(p, p)) for p in unit.original}
         if not unit.original:
             return ("removed", "") if band.virtual else ("exact", "")
         if all(v is None for v in values.values()):
             return "removed", ""
-        if not band.virtual and all(values[p] == unit.original[p] for p in unit.original):
+        extra = [] if band.virtual else self.orphans.get(unit.id, [])
+        if (
+            not band.virtual
+            and not extra
+            and all(values[p] == unit.original[p] for p in unit.original)
+        ):
             return "exact", ""
-        return "reflow", self.parts_text(unit, paths)
+        return "reflow", self.parts_text(unit, paths, extra)
 
     def _last_list_unit(self, section_id: str) -> int | None:
         found = [
@@ -608,7 +746,7 @@ class Writer:
     # ─── Une page ───
     def page(self, number: int) -> str:
         scanned = bool(self.layout.pages[number - 1].background)
-        out = ["\\gdef\\cverasures{}", self.background(number)]
+        out = ["\\gdef\\cverasures{}\\gdef\\cvstrips{}", self.background(number)]
         out.append("".join(f"\\global\\cvs{LANES[n]}=0pt" for n in range(self.lanes)))
         out.append("\\global\\cvlowest=0pt")
         # La dernière ligne de base d'origine posée dans chaque colonne.
@@ -644,7 +782,10 @@ class Writer:
             top = min(u.y for u in band.units)
             for u, st, text in rendered:
                 y = y_band + (u.y - top if band.virtual else u.y - band.y)
-                out.append(mark(*u.mark.split()) if u.mark != "none" else mark("none"))
+                sign = u.mark
+                if band.virtual and band.paths.get(u.id):
+                    sign = _mark_of(next(iter(band.paths[u.id].values())))
+                out.append(mark(*sign.split()) if sign != "none" else mark("none"))
                 out.append(f"\\global\\cvy=\\dimexpr{bp(y)}+\\cvd\\relax")
                 out.append(self.attached(u, st == "exact" and not band.virtual))
                 if st == "exact" and scanned and not band.virtual:
@@ -661,13 +802,28 @@ class Writer:
                     out.append(self.exact(u))
                     out.append(f"\\global\\cvend=\\dimexpr\\cvy+{bp(u.end)}\\relax")
                 else:
+                    drawn_sign = True
                     if scanned and not band.virtual:
-                        out.append(self.lift(u) if u.strip else self.erase(u))
-                        out.append(self.cover(u) if u.strip else "")
-                    out.append(
-                        self.reflow(u, text, marker=not (scanned and u.strip and not band.virtual))
-                    )
+                        if u.strip and len(u.strip) > 6:
+                            # À sa place : seuls ses mots sont effacés de l'image (sa puce, un
+                            # filet restent). Décalée : sa bande effacée, son signe reposé.
+                            out.append("\\ifdim\\dimexpr\\ifdim\\cvd<0pt -\\fi\\cvd\\relax<0.5pt")
+                            out.append(self.erase(u, words_only=True))
+                            out.append("\\else")
+                            out.append(self.lift(u, sign=True))
+                            out.append("\\fi")
+                            drawn_sign = not self.sign_of(u)
+                        else:
+                            out.append(self.lift(u) if u.strip else self.erase(u))
+                            out.append(self.cover(u) if u.strip else "")
+                            drawn_sign = not u.strip
+                    elif scanned and self.sign_of(u):
+                        # Une puce ajoutée : le signe de l'image de son modèle.
+                        out.append(self.place_strip(u, self.sign_of(u)))
+                        drawn_sign = False
+                    out.append(self.reflow(u, text, marker=drawn_sign))
                     out.append(f"\\global\\cvend=\\dimexpr\\cvy+{bp(u.leading)}*(\\cvn-1)\\relax")
+                out.append(self.position(number, u, st != "exact", band.virtual))
                 out.append("\\ifdim\\cvend>\\cvbandend\\global\\cvbandend=\\cvend\\fi")
                 out.append("\\ifdim\\cvend>\\cvlowest\\global\\cvlowest=\\cvend\\fi")
             if band.virtual:
@@ -690,7 +846,8 @@ class Writer:
         size = self.layout.pages[number - 1]
         units = [u for u in self.layout.units if u.page == number]
         lowest = max((u.y + u.end for u in units), default=size.height)
-        limit = size.height - max(14.0, 0.5 * (size.height - lowest))
+        # Jamais en dessous de la dernière ligne d'origine : un clone intact ne dépasse pas.
+        limit = max(size.height - max(14.0, 0.5 * (size.height - lowest)), lowest + 1.0)
         return (
             f"\\ifdim\\cvlowest>{bp(limit)}\\typeout{{Overfull \\string\\vbox\\space"
             f"(\\the\\dimexpr\\cvlowest-{bp(limit)}\\relax\\space too high)}}\\fi"
@@ -742,6 +899,8 @@ class Writer:
             y += size * 2.2
             out.append(f"\\global\\cvy=\\dimexpr{bp(y)}+\\cvs{LANES[lane]}\\relax")
             out.append(self.reflow(title_unit, self.parts_text(title_unit, {})))
+            out.append(f"\\global\\cvend=\\dimexpr\\cvy+{bp(size * 1.3)}*(\\cvn-1)\\relax")
+            out.append(self.position(lowest.page, title_unit, True, True))
             out.append(
                 f"\\global\\advance\\cvs{LANES[lane]} by \\dimexpr{bp(size * 1.3)}*\\cvn\\relax"
             )
@@ -755,6 +914,8 @@ class Writer:
                 out.append(f"\\global\\cvy=\\dimexpr{bp(y)}+\\cvs{LANES[lane]}\\relax")
                 latex = "{" + self.ink(body_ink) + " " + rich(text) + "}"
                 out.append(self.reflow(body_unit, latex))
+                out.append(f"\\global\\cvend=\\dimexpr\\cvy+{bp(size * 1.25)}*(\\cvn-1)\\relax")
+                out.append(self.position(lowest.page, body_unit, True, True))
                 step = bp(size * 1.25)
                 out.append(f"\\global\\advance\\cvs{LANES[lane]} by \\dimexpr{step}*\\cvn\\relax")
         return "\n".join(out)
@@ -770,11 +931,19 @@ class Writer:
         font_lines = []
         for font_id in sorted(self.fonts):
             family = fonts.get(font_id)
+            # Un gras qui n'existe pas dans la famille (petites capitales de Latin Modern) :
+            # le maigre épaissi.
+            thick = (
+                ", BoldFeatures={FakeBold=2.5}, BoldItalicFeatures={FakeBold=2.5}"
+                if clone_fonts.fake_bold(font_id)
+                else ""
+            )
             font_lines.append(
                 f"\\newfontfamily\\cvf{font_id}{{{family.prefix}}}"
                 f"[Path={family.folder.as_posix()}/, Extension=.ttf, "
                 "UprightFont=*-Regular, BoldFont=*-Bold, ItalicFont=*-Italic, "
-                "BoldItalicFont=*-BoldItalic, Numbers=Proportional, Ligatures={TeX, CommonOff}]"
+                "BoldItalicFont=*-BoldItalic, Numbers=Proportional, "
+                f"Ligatures={{TeX, CommonOff}}{thick}]"
             )
         inks = "\n".join(
             self.ink_macro(i, self.layout.inks[i])
@@ -824,11 +993,20 @@ class Writer:
 % Les mots d'un scan à effacer de l'image : dessinés avec le fond de la page, à la fin.
 \\def\\cverasures{{}}
 \\newcommand\\cverase[1]{{\\xdef\\cverasures{{\\unexpanded\\expandafter{{\\cverasures}}\\unexpanded{{#1}}}}}}
-% Une bande d'image d'un scan, posée par son coin haut gauche.
-\\newcommand\\cvstrip[5]{{\\begin{{textblock*}}{{#3}}(#1,#2)\\noindent\\includegraphics[width=#3,height=#4]{{#5}}\\end{{textblock*}}}}
+% Une bande d'image d'un scan (transparente hors de l'encre), posée par son coin haut gauche :
+% dessinée avec le fond de la page, après les trous, sous tout le texte.
+\\def\\cvstrips{{}}
+\\newcommand\\cvstrip[5]{{\\edef\\cvtmp{{\\the\\dimexpr#2\\relax}}%
+\\xdef\\cvstrips{{\\unexpanded\\expandafter{{\\cvstrips}}%
+\\noexpand\\node[anchor=north west,inner sep=0pt] at (#1,-\\cvtmp)%
+ {{\\noexpand\\includegraphics[width=#3,height=#4]{{#5}}}};}}}}
 % Du texte invisible (un scan : l'image le montre), qui se copie et se lit.
 \\newcommand\\cvhide[1]{{\\special{{pdf:code q 3 Tr}}#1\\special{{pdf:code 0 Tr Q}}}}
 \\newcommand\\cvpar[5]{{\\begin{{textblock*}}{{#3}}(#1,\\dimexpr#2-#4\\relax)#5\\end{{textblock*}}}}
+% Où chaque unité est posée (ligne du .tex, page, unité, bords, haut, bas) : le cadre d'un clic.
+\\newwrite\\cvposfile\\immediate\\openout\\cvposfile=\\jobname.pos
+\\newcommand\\cvpos[6]{{\\immediate\\write\\cvposfile{{\\the\\inputlineno\\space#1 #2 #3 #4 %
+\\the\\dimexpr#5\\relax\\space\\the\\dimexpr#6\\relax}}}}
 \\begin{{document}}
 {content}
 \\end{{document}}

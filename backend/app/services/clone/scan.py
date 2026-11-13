@@ -2,7 +2,8 @@
 
 Un scan n'a ni texte ni formes dans son PDF, seulement une image. Les mots viennent de
 Tesseract (``services/ocr.py``) ; leur couleur et leur graisse se lisent dans l'encre de
-l'image ; la police se devine aux largeurs (Arial, Times et Calibri n'ont pas les mêmes) ;
+l'image ; la police se reconnaît au dessin des mots (chaque police candidate écrit les mêmes
+mots, comparés à l'image) ;
 les fonds de couleur et les filets se cherchent dans l'image, en basse résolution.
 Le résultat a la forme d'une page lue (``reading.Page``) : la suite est la même.
 """
@@ -12,7 +13,7 @@ from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat
 
 from app import fonts
 from app.services import ocr
@@ -116,7 +117,88 @@ def _glyph(words: list[tuple], n: int) -> str | None:
     return "marker" if h < 0.6 * rest else "icon"
 
 
-def _font(lines: list[ocr.Line], online: bool) -> str:
+def _ink_of(image: Image.Image, box: tuple[float, float, float, float]) -> Image.Image | None:
+    """L'encre d'un mot de l'image, en gris (encre = blanc), recadrée sur ses lettres."""
+    x0, y0, x1, y1 = (int(round(v)) for v in box)
+    crop = image.crop((x0 - 2, y0 - 2, x1 + 2, y1 + 2)).convert("L")
+    w, h = crop.size
+    if w < 8 or h < 6:
+        return None
+    border = [crop.getpixel((x, 0)) for x in range(w)] + [
+        crop.getpixel((x, h - 1)) for x in range(w)
+    ]
+    ground = statistics.median(border)
+    low, high = crop.getextrema()
+    ink = low if ground > 128 else high
+    span = abs(ground - ink)
+    if span < 40:
+        return None
+    soft = crop.point(lambda v: max(0, min(255, int(abs(v - ground) * 255 / span))))
+    letters = soft.point(lambda v: 255 if v > 90 else 0).getbbox()
+    return soft.crop(letters) if letters else None
+
+
+def _likeness(face: ImageFont.FreeTypeFont, text: str, seen: Image.Image) -> float:
+    """Le mot écrit dans la police, ramené à la boîte de ses lettres sur l'image : 1 = pareil."""
+    canvas = Image.new("L", (int(face.getlength(text)) + 60, 260), 0)
+    ImageDraw.Draw(canvas).text((30, 60), text, font=face, fill=255)
+    letters = canvas.point(lambda v: 255 if v > 90 else 0).getbbox()
+    if not letters:
+        return 0.0
+    drawn = canvas.crop(letters).resize(seen.size, Image.Resampling.BILINEAR)
+    return 1 - ImageStat.Stat(ImageChops.difference(drawn, seen)).mean[0] / 255
+
+
+def _candidates(online: bool) -> list[str]:
+    found = [clone_fonts.resolve(name, online)[0] for name in CANDIDATES]
+    for name in ONLINE:
+        font_id = clone_fonts.known(name) or (clone_fonts.download(name) if online else None)
+        if font_id and font_id not in found:
+            found.append(font_id)
+    return found + [f for f in fonts.families() if f not in found]
+
+
+def _font(
+    lines: list[ocr.Line], online: bool, image: Image.Image | None = None, k: float = 1.0
+) -> str:
+    """La police du texte courant : celle qui dessine le mieux les mots lus (chaque mot, écrit
+    dans la police candidate et ramené à la boîte de ses lettres, est comparé à l'image ; le
+    gras compte aussi). Sans image ou trop peu de mots : par les largeurs."""
+    if image is not None:
+        plain = [line for line in lines if len(line.text) >= 12]
+        heights = Counter(round(line.h * 2) / 2 for line in plain)
+        usual = heights.most_common(1)[0][0] if heights else 0
+        words = [
+            w
+            for line in plain
+            if abs(line.h - usual) <= 0.6
+            for w in line.words
+            if len(w[0]) >= 5 and w[0].isalpha()
+        ]
+        words = sorted(words, key=lambda w: -len(w[0]))[:24]
+        seen = [
+            (w[0], _ink_of(image, (w[1] * k, w[2] * k, (w[1] + w[3]) * k, (w[2] + w[4]) * k)))
+            for w in words
+        ]
+        seen = [(t, s) for t, s in seen if s is not None and s.size[0] > 10 and s.size[1] > 6]
+        if len(seen) >= 6:
+            best, best_score = "", -1.0
+            for font_id in _candidates(online):
+                face, bold = _face(font_id), _face(font_id, "bold")
+                if face is None:
+                    continue
+                score = statistics.mean(
+                    max(_likeness(face, t, s), _likeness(bold, t, s) if bold else 0.0)
+                    for t, s in seen
+                )
+                if score > best_score:
+                    best, best_score = font_id, score
+            if best:
+                return best
+    return _font_by_widths(lines, online)
+
+
+def _font_by_widths(lines: list[ocr.Line], online: bool) -> str:
     """La police dont les largeurs collent le mieux aux mots lus.
 
     Avec la bonne police, chaque mot du texte courant donne la même taille (largeur lue /
@@ -133,12 +215,7 @@ def _font(lines: list[ocr.Line], online: bool) -> str:
         for w in line.words
         if len(w[0]) >= 4 and w[0].isalpha()
     ][:200]
-    candidates = [clone_fonts.resolve(name, online)[0] for name in CANDIDATES]
-    for name in ONLINE:
-        found = clone_fonts.known(name) or (clone_fonts.download(name) if online else None)
-        if found and found not in candidates:
-            candidates.append(found)
-    candidates += [f for f in fonts.families() if f not in candidates]
+    candidates = _candidates(online)
     best, best_spread = candidates[0], float("inf")
     for font_id in candidates:
         face, bold = _face(font_id), _face(font_id, "bold")
@@ -300,7 +377,7 @@ def page(scanned: ocr.ScannedPage, folder: Path, number: int = 1, online: bool =
         image = opened.convert("RGB")
     scale = 72 / ocr.DPI
     paper = Counter(_pixels(image.resize((60, 85)))).most_common(1)[0][0]
-    font_id = _font(scanned.lines, online)
+    font_id = _font(scanned.lines, online, image, image.width / scanned.width)
     face = _face(font_id)
     family = fonts.get(font_id).name.replace(" ", "")
     _unglue_icons(scanned)

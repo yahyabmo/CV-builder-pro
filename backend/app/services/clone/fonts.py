@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import threading
 import unicodedata
+from pathlib import Path
 
 import httpx
 
@@ -219,8 +220,10 @@ def texlive(name: str) -> str | None:
         return None
     font_id = _font_id(name)
     with _lock:
-        if known(font_id):
-            return known(font_id)
+        manifest = paths.EXTRA_FONTS_DIR / font_id / "font.json"
+        current = known(font_id)
+        if current and manifest.is_file() and json.loads(manifest.read_text()).get("version") == 2:
+            return current
         files = {}
         for suffix, style in (
             ("Regular", "regular"),
@@ -243,18 +246,56 @@ def texlive(name: str) -> str | None:
             return None
         folder = paths.EXTRA_FONTS_DIR / font_id
         folder.mkdir(parents=True, exist_ok=True)
+        # Pas de gras dans la famille (les petites capitales de Latin Modern) : le maigre,
+        # renommé en gras, que le clone épaissit (« FakeBold » de fontspec).
+        fake = files["Bold"] == files["Regular"]
         for suffix, path in files.items():
             # Un OpenType sous le nom attendu (.ttf) : XeTeX et Pillow lisent son contenu.
-            shutil.copyfile(path, folder / f"{font_id}-{suffix}.ttf")
+            target = folder / f"{font_id}-{suffix}.ttf"
+            shutil.copyfile(path, target)
+            if fake and "Bold" in suffix:
+                _rename(target, f"{font_id}-{suffix}")
         (folder / "font.json").write_text(
             json.dumps(
-                {"name": name, "category": "serif", "prefix": font_id, "source": "TeX Live"},
+                {
+                    "name": name,
+                    "category": "serif",
+                    "prefix": font_id,
+                    "source": "TeX Live",
+                    "version": 2,
+                    "fake_bold": fake,
+                },
                 ensure_ascii=False,
             )
             + "\n",
             encoding="utf-8",
         )
     return known(font_id)
+
+
+def _rename(file: Path, postscript: str) -> None:
+    """Le nom PostScript d'une police (ce que le PDF montre) : « …-Bold » pour un gras épaissi."""
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(str(file))
+    for record in font["name"].names:
+        if record.nameID in (4, 6):
+            record.string = postscript
+    if "CFF " in font:
+        cff = font["CFF "].cff
+        cff.fontNames = [postscript]
+        cff.topDictIndex[0].FullName = postscript
+    font.save(str(file))
+
+
+def fake_bold(font_id: str) -> bool:
+    """La famille n'a pas de vrai gras : son gras est le maigre, à épaissir."""
+    try:
+        family = fonts.get(font_id)
+    except fonts.UnknownFont:
+        return False
+    manifest = family.folder / "font.json"
+    return manifest.is_file() and bool(json.loads(manifest.read_text()).get("fake_bold"))
 
 
 def resolve(name: str, online: bool = True) -> tuple[str, Badge]:

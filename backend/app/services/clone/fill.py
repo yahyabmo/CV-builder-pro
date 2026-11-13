@@ -223,6 +223,85 @@ def _fix_bullets(content: CVContent, structure: Structure, report: Report) -> bo
     return changed
 
 
+def _same_name(a: str, b: str) -> bool:
+    """Deux noms pareils, même si la lecture d'un scan a perdu une première lettre."""
+    ka, kb = key(a), key(b)
+    return bool(ka and kb) and (ka == kb or ka == kb[1:] or kb == ka[1:])
+
+
+def _split_lists(content: CVContent, structure: Structure, report: Report) -> bool:
+    """Une liste de compétences à puces : un groupe par puce de la page (l'IA les écrit
+    parfois à la suite, dans un seul groupe) ; un groupe nommé comme sa rubrique n'a pas
+    de nom."""
+    hits = F.Locator(structure, content).locate()
+    pages = _Pages(structure)
+    changed = False
+    for s in content.sections:
+        if not isinstance(s, SkillsSection) or not s.visible:
+            continue
+        out: list[SkillGroup] = []
+        for n, group in enumerate(s.items):
+            if group.label and _same_name(group.label, s.title):
+                group.label = ""
+                changed = True
+            hit = hits.get(f"{s.id}.{n}.text")
+            starts: list[str] = []
+            if hit is not None:
+                lines: list[Line] = []
+                for w in hit.words:
+                    line = pages.line_of[id(w)]
+                    if not lines or lines[-1] is not line:
+                        lines.append(line)
+                for line in lines[1:]:
+                    words = [w for w in line.words if w in hit.words]
+                    if words and _starts_with_marker(words, line, pages.page_of[id(words[0])]):
+                        # Le premier mot après le signe de puce (que le texte n'a pas).
+                        text = next((w.text for w in words if not is_marker(w.text)), "")
+                        if text:
+                            starts.append(text)
+            pieces = _split_at(group.text, starts) if starts else [group.text]
+            if len(pieces) > 1:
+                out.append(SkillGroup(label=group.label, text=pieces[0]))
+                out += [SkillGroup(label="", text=piece) for piece in pieces[1:]]
+                report.split += len(pieces) - 1
+                changed = True
+            else:
+                out.append(group)
+        s.items = out
+    return changed
+
+
+def _merge_twins(content: CVContent, structure: Structure) -> bool:
+    """Deux rubriques du même genre et du même titre (l'IA a mis le bénévolat à part, sous
+    le même « EXPÉRIENCE ») : une seule, ses entrées dans l'ordre de la page."""
+    hits = F.Locator(structure, content).locate()
+    changed = False
+    seen: dict[tuple[str, str], object] = {}
+    for s in content.sections:
+        if not s.visible or not s.items or not key(s.title):
+            continue
+        k = (s.kind, key(s.title))
+        first = seen.get(k)
+        if first is None:
+            seen[k] = s
+            continue
+        if type(first.items[0]) is not type(s.items[0]):
+            continue
+
+        def top(section, n: int) -> float:
+            found = [h.top for p, h in hits.items() if p.startswith(f"{section.id}.{n}.")]
+            return min(found) if found else 10.0**6
+
+        both = [(top(first, n), 0, n, it) for n, it in enumerate(first.items)]
+        both += [(top(s, n), 1, n, it) for n, it in enumerate(s.items)]
+        both.sort(key=lambda t: (t[0], t[1], t[2]))
+        first.items = [it for *_, it in both]
+        s.items = []
+        s.visible = False
+        changed = True
+    return changed
+
+
 def _split_at(text: str, starts: list[str]) -> list[str]:
     pieces = [text]
     for start in starts:
@@ -272,6 +351,13 @@ _DATE = re.compile(
     re.I,
 )
 _CONTACT = re.compile(r"@|https?://|www\.|linkedin|github|\+?\d[\d .-]{7,}")
+# « Adresse : 69000 Lyon », « Tél : », « Permis B » : une coordonnée, libellé en tête.
+_CONTACT_LABEL = re.compile(
+    r"^\s*(adresse|t[ée]l[ée]?(?:phone)?|t[ée]l\.?|e-?mail|mail|portable|mobile|linkedin|"
+    r"github|site(?: web)?|permis(?: de conduire)?|n[ée]e? le|nationalit[ée]|[âa]ge|"
+    r"date de naissance)\s*(?::|$)",
+    re.I,
+)
 
 
 def _add_lines(content: CVContent, structure: Structure, report: Report) -> None:
@@ -316,7 +402,12 @@ def _add_lines(content: CVContent, structure: Structure, report: Report) -> None
                 continue
             report.added.append(text)
             top = paragraph[0].top
+            listed = section is None or not isinstance(
+                section, (ExperienceSection, ProjectsSection, EducationSection)
+            )
             if block is None or (section is None and block.title is None):
+                _to_header(content, text)
+            elif listed and _CONTACT_LABEL.match(text):
                 _to_header(content, text)
             elif section is None:
                 _to_other(content, structure, block, text)
@@ -326,6 +417,18 @@ def _add_lines(content: CVContent, structure: Structure, report: Report) -> None
 
 def _to_header(content: CVContent, text: str) -> None:
     h = content.header
+    labelled = _CONTACT_LABEL.match(text)
+    if labelled:
+        label, _, value = text.partition(":")
+        if not h.contact_lines:
+            h.contact_lines.append([])
+        if value.strip():
+            h.contact_lines[-1].append(
+                ContactItem(text=value.strip(), label=label.strip(), url=None, bold=False)
+            )
+        else:
+            h.contact_lines[-1].append(ContactItem(text=text.strip(), url=None, bold=False))
+        return
     if _CONTACT.search(text):
         if not h.contact_lines:
             h.contact_lines.append([])
@@ -536,6 +639,10 @@ def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
     titles = lambda: [s.title for s in content.sections if s.visible]  # noqa: E731
     structure = analyse(pages, titles())
     if _fix_bullets(content, structure, report):
+        structure = analyse(pages, titles())
+    if _split_lists(content, structure, report):
+        structure = analyse(pages, titles())
+    if _merge_twins(content, structure):
         structure = analyse(pages, titles())
     _add_lines(content, structure, report)
     structure = analyse(pages, titles())

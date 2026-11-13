@@ -152,6 +152,20 @@ try {
   await browser.waitFor(`location.hash === '#/cv/base'`, 5000)
   check(true, '« Ajuster le style » ouvre le CV de base')
 
+  // La forme du CV cloné, dans l'onglet Style : la mise en page de l'appli, puis retour au clone.
+  const tex = async () => (await (await fetch(`${API}/api/cvs/base/source`)).json()).tex
+  await browser.waitFor(byText('[role=tab]', 'Style'), 10000)
+  await browser.evaluate(`(() => { const t = ${byText('[role=tab]', 'Style')}; t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); t.click(); return true })()`)
+  await browser.waitFor(byText('[role=radio]', 'Copie de ton PDF'), 10000)
+  check(await browser.evaluate(`${byText('[role=radio]', 'Copie de ton PDF')}.getAttribute('aria-checked') === 'true'`), 'onglet Style : « Forme du CV », la copie du PDF choisie')
+  await click(byText('[role=radio]', "Mise en page de l'appli"))
+  await browser.waitFor(byText('button', 'Couleurs'), 30000)
+  check(!(await tex()).includes('CV cloné'), "forme : la mise en page de l'appli, réglages de style revenus")
+  await browser.screenshot(`${out}/forme-appli.png`)
+  await click(byText('[role=radio]', 'Copie de ton PDF'))
+  await browser.waitFor(`!${byText('button', 'Couleurs')}`, 30000)
+  check((await tex()).includes('CV cloné'), 'forme : retour à la copie du PDF, sans réimporter')
+
   // ─── Saisie à la main, par « Remplacer par un autre… » du menu de ce CV classique ───
   const baseMenu = (name) => `document.querySelector('button[aria-label="Menu de ${name}"]')`
   const menuItem = (text) => `[...document.querySelectorAll('[role=menuitem]')].find(i => i.textContent.includes(${JSON.stringify(text)}))`

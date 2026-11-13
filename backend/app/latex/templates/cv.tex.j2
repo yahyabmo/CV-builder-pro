@@ -83,13 +83,24 @@
 \pagestyle{empty}
 
 % Espace entre deux entrées d'une rubrique, et entre deux blocs de compétences.
+\BLOCK{if s.columns.layout == "one"}
+% Une colonne : une entrée (ou une rubrique et sa première entrée) qui commencerait en bas de
+% page passe à la suivante, plutôt que d'y laisser son titre seul.
+\usepackage{needspace}
+\newcommand{\debut}[1]{\par\Needspace{#1\baselineskip}}
+\newcommand{\entre}{\par\vspace{\VAR{h.glue(sp.entry_gap_pt, sp.entry_stretch)}}\debut{4}}
+\BLOCK{else}
 \newcommand{\entre}{\par\vspace{\VAR{h.glue(sp.entry_gap_pt, sp.entry_stretch)}}}
+\BLOCK{endif}
 \newcommand{\petitentre}{\par\vspace{\VAR{h.glue(sp.skill_gap_pt, sp.skill_stretch)}}}
 % Hauteur laissée aux deux colonnes : tout le reste de la page.
 \newlength{\hauteurcol}
 
 \BLOCK{macro section(sec, first)}
 \VAR{mark("section", sec.id)}
+\BLOCK{if s.columns.layout == "one"}
+\debut{6}
+\BLOCK{endif}
 \BLOCK{if first}
 \rubrique[0pt]{\VAR{e(sec.title)}}
 \BLOCK{else}
@@ -113,13 +124,23 @@
 \BLOCK{endif}
 
 \BLOCK{endfor}
+\BLOCK{elif sec.kind == "skills" and not (sec.items | selectattr("label") | list)}
+% Des compétences sans groupes (une liste à puces dans le PDF importé).
+\begin{itemize}
+\BLOCK{for it in sec.items}
+\VAR{mark("item", sec.id, loop.index0)}
+\item \VAR{rich(it.text)}
+\BLOCK{endfor}
+\end{itemize}
 \BLOCK{elif sec.kind == "skills"}
 \BLOCK{for it in sec.items}
 \BLOCK{if not loop.first}
 \petitentre
 \BLOCK{endif}
 \VAR{mark("item", sec.id, loop.index0)}
+\BLOCK{if it.label}
 \VAR{h.fmt(b.skill_label, e(it.label))}\\
+\BLOCK{endif}
 \VAR{rich(it.text)}
 
 \BLOCK{endfor}

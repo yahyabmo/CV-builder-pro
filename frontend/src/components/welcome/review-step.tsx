@@ -145,17 +145,22 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
     setApplying(true)
     try {
       let withClone = false
+      const current = clone.status === 'done' && cloned.current === JSON.stringify(final())
       if (shape === 'clone') {
         // Le contenu a changé depuis le dernier clone : on le refait avant de valider.
-        const fresh = clone.status === 'done' && cloned.current === JSON.stringify(final()) ? clone.result : await runClone(final())
+        const fresh = current ? clone.result : await runClone(final())
         if (!fresh?.ok) {
           toast.error('Le clone n’est pas prêt', { description: 'Choisis « Proche du mien » ou « Style de l’appli » dans l’onglet Forme.' })
           setView('form')
           return
         }
         withClone = true
+      } else if (clone.status === 'done' && clone.result.ok) {
+        // Notre forme choisie : le clone est gardé à côté, pour y passer plus tard (onglet Style).
+        const fresh = current ? clone.result : await runClone(final()).catch(() => null)
+        withClone = Boolean(fresh?.ok)
       }
-      const applied = await api.applyBase(final(), id, keepPhoto, shape === 'mine' ? styleKeep : null, intent, withClone)
+      const applied = await api.applyBase(final(), id, keepPhoto, shape === 'mine' ? styleKeep : null, intent, withClone, shape === 'clone')
       clearIntent()
       await refresh()
       setDone(applied)
@@ -494,7 +499,18 @@ function StylePanel({ id, content, findings, mine, setMine, keep, toggle, styleK
     )
   }
   if (findings.length === 0) {
-    return <p className="rounded-xl border bg-card surface p-6 text-[13px] text-muted-foreground">L'appli n'a pas su lire le style de ce PDF : il gardera le style de l'appli, que tu changeras dans l'onglet Style.</p>
+    // Un scan, souvent : rien à reprendre, mais l'aperçu de notre forme reste là.
+    return (
+      <div className="flex flex-wrap items-start gap-4">
+        <p className="min-w-0 flex-[999_1_300px] rounded-xl border bg-card surface p-5 text-[13px] text-muted-foreground">
+          L'appli n'a pas su lire le style de ce PDF (une image, par exemple) : notre forme prend le style de l'appli, que tu changeras dans l'onglet Style.
+        </p>
+        <div className="flex min-w-0 flex-[1_1_260px] flex-col gap-2 sm:max-w-[320px]">
+          <span className="text-[12.5px] font-semibold text-foreground/80">Ton CV de base, au format de l'appli</span>
+          <Preview id={id} content={content} keep={null} />
+        </div>
+      </div>
+    )
   }
   const choices = [
     [true, 'Garder un style proche du mien', 'Police, couleurs, photo, colonnes et ordre des rubriques repris de ton PDF.'],

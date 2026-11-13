@@ -67,8 +67,10 @@ class ApplyIn(BaseModel):
     # le CV classique remplacé (la première version par défaut).
     new_name: str | None = Field(default=None, max_length=120)
     target: str = cv_store.BASE_SLUG
-    # La forme du PDF clonée (calculée par /clone), au lieu du style de l'appli.
+    # Garder la forme du PDF clonée (calculée par /clone) ; ``clone_active`` : le CV la prend
+    # tout de suite (sinon la mise en page de l'appli, et le clone reste à côté).
     clone: bool = False
+    clone_active: bool = True
 
 
 class PreviewIn(BaseModel):
@@ -459,8 +461,10 @@ async def apply(body: ApplyIn) -> ApplyOut:
     cloned = _folder(body.import_id) / CLONE_DIR if body.import_id else None
     if body.clone and cloned is not None and (cloned / cv_store.CLONE).exists():
         cv_store.copy_clone(cloned, base)
+        cv_store.touch(base, shape="clone" if body.clone_active else "app")
     else:
         cv_store.remove_clone(base)
+        cv_store.touch(base, shape="clone")
     if new_name:
         # Le premier lancement est passé : l'accueil ne se rouvre plus sur la première version.
         main = _base()

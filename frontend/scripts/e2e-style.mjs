@@ -94,6 +94,8 @@ try {
   await browser.evaluate(`(() => { const t = ${byText('[role=tab]', 'Contenu')}; t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); t.click(); return true })()`)
   await browser.waitFor(`[...document.querySelectorAll('h2')].some(h => h.textContent === 'Rubriques')`, 5000)
   check(styleJson().columns.layout === 'one' && (await browser.evaluate(`![...document.querySelectorAll('h2')].some(h => h.textContent === 'Colonne de droite')`)), 'une colonne : enregistrée, une seule liste de rubriques')
+  const order = contentJson().sections.map((s) => s.column)
+  check(order[0] === 'right' && order.lastIndexOf('right') < order.indexOf('left'), `une colonne : la grande colonne d'abord (${contentJson().sections.map((s) => s.id).slice(0, 3).join(', ')}…)`)
   await browser.screenshot(`${out}/style-une-colonne.png`)
   await browser.evaluate(`(() => { const t = ${byText('[role=tab]', 'Style')}; t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); t.click(); return true })()`)
   // L'onglet Style se remonte replié : on rouvre « Mise en page ».
@@ -103,6 +105,36 @@ try {
   await click(`[...document.querySelectorAll('[role=radio]')].find(e => e.textContent === 'Deux colonnes')`)
   await settle()
   check(styleJson().columns.layout === 'two', 'retour à deux colonnes')
+
+  // Glisser une rubrique de la colonne de gauche dans celle de droite, à la souris.
+  await browser.evaluate(`(() => { const t = ${byText('[role=tab]', 'Contenu')}; t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); t.click(); return true })()`)
+  await browser.waitFor(`document.querySelector('[data-section="langues"] button[aria-label="Déplacer"]')`, 5000)
+  const box = (js) => browser.evaluate(`(() => { const r = (${js}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2] })()`)
+  await browser.evaluate(`document.querySelector('[data-section="experience"]').scrollIntoView({block: 'center'})`)
+  await browser.evaluate(`document.querySelector('[data-section="langues"]').scrollIntoView({block: 'center'})`)
+  const [hx, hy] = await box(`document.querySelector('[data-section="langues"] button[aria-label="Déplacer"]')`)
+  const mouse = (type, x, y) => browser.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 })
+  await mouse('mousePressed', hx, hy)
+  for (let k = 1; k <= 30; k++) {
+    // Vers le bas, jusque sous la première rubrique de la colonne de droite.
+    const [tx, ty] = await box(`document.querySelector('[data-section="experience"]')`)
+    await mouse('mouseMoved', hx + ((tx - hx) * k) / 30, hy + ((ty + 4 - hy) * k) / 30)
+    await sleep(25)
+  }
+  await sleep(150)
+  const [tx, ty] = await box(`document.querySelector('[data-section="experience"]')`)
+  await mouse('mouseReleased', tx, ty + 4)
+  await settle()
+  check(contentJson().sections.find((s) => s.id === 'langues')?.column === 'right', 'glisser-déposer : « Langues » passe dans la colonne de droite')
+  await browser.screenshot(`${out}/glisser-colonnes.png`)
+  // Le menu fait toujours le chemin inverse.
+  await browser.evaluate(`(() => { const el = document.querySelector('[data-section="langues"] button[aria-label="Actions"]'); el.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, pointerType: 'mouse'})); return true })()`)
+  await browser.waitFor(byText('[role=menuitem]', 'Passer dans la colonne de gauche'), 5000)
+  await click(byText('[role=menuitem]', 'Passer dans la colonne de gauche'))
+  await settle()
+  check(contentJson().sections.find((s) => s.id === 'langues')?.column === 'left', 'le menu « Passer dans la colonne de gauche » marche toujours')
+  await browser.evaluate(`(() => { const t = ${byText('[role=tab]', 'Style')}; t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); t.click(); return true })()`)
+  await browser.waitFor(byText('button', 'Mise en page'), 5000)
 
   // Photo : import, recadrage, remplacement.
   if (photo) {

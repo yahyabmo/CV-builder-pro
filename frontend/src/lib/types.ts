@@ -151,9 +151,13 @@ export interface CVSummary {
 export interface CVDetail extends CVSummary {
   content: CVContent
   style: CVStyle
-  /** La forme vient du PDF d'origine (clone) : l'onglet Style ne s'y applique pas. */
+  /** Le CV a une forme clonée de son PDF d'origine (gardée à côté de lui). */
   cloned?: boolean
+  /** La forme qu'il prend : le clone, ou la mise en page de l'appli (onglet Style). */
+  shape?: CloneShape
 }
+
+export type CloneShape = 'clone' | 'app'
 
 export interface LatexError {
   message: string

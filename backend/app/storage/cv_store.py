@@ -139,7 +139,7 @@ def generated(path: Path) -> str:
     from app.services.clone.plan import AnchoredLayout
 
     content, style = load(path)
-    layout = load_clone(path)
+    layout = load_clone(path) if load_meta(path).shape == "clone" else None
     if layout is not None:
         photo = content.header.photo
         image = photo if photo and (path / photo).is_file() else None
@@ -211,7 +211,13 @@ def create(name: str, source: str, kind: Literal["base", "cv"] = "cv") -> str:
         shutil.copy2(origin / TEX, target / TEX)
     save_meta(
         target,
-        CVMeta(name=name.strip(), kind=kind, source=source, mode="manual" if manual else "visual"),
+        CVMeta(
+            name=name.strip(),
+            kind=kind,
+            source=source,
+            mode="manual" if manual else "visual",
+            shape=load_meta(origin).shape,
+        ),
     )
     return slug
 

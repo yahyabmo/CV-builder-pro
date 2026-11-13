@@ -84,8 +84,10 @@ class _Helpers:
         return self.fmt(block.model_copy(update={"color": color}), latex)
 
     def glue(self, base: float, stretch: float) -> str:
-        """Un espace extensible quand les colonnes remplissent la page."""
-        if self.style.columns.fill_page and stretch:
+        """Un espace extensible quand les deux colonnes remplissent la page (en une colonne,
+        le texte coule de page en page : rien ne s'étire)."""
+        columns = self.style.columns
+        if columns.fill_page and columns.layout == "two" and stretch:
             return f"{pt(base)}pt plus {pt(stretch)}fil"
         return f"{pt(base)}pt"
 

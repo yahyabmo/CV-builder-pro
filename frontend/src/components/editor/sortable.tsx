@@ -25,12 +25,26 @@ interface SortableListProps {
   children: ReactNode
 }
 
-/** Une liste réordonnable au glisser-déposer (souris ou clavier). */
-export function SortableList({ ids, onMove, children }: SortableListProps) {
-  const sensors = useSensors(
+/** La souris (après 4 px, pour qu'un clic reste un clic) et le clavier. */
+export function useListSensors() {
+  return useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+}
+
+/** Les éléments d'une liste, dans un glisser-déposer commun à plusieurs listes. */
+export function SortableGroup({ ids, children }: { ids: string[]; children: ReactNode }) {
+  return (
+    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+      {children}
+    </SortableContext>
+  )
+}
+
+/** Une liste réordonnable au glisser-déposer (souris ou clavier). */
+export function SortableList({ ids, onMove, children }: SortableListProps) {
+  const sensors = useListSensors()
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return
     onMove(ids.indexOf(String(active.id)), ids.indexOf(String(over.id)))

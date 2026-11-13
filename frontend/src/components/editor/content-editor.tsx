@@ -9,6 +9,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react'
+import { closestCorners, DndContext, useDroppable, type DragEndEvent, type DragOverEvent } from '@dnd-kit/core'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -30,7 +31,7 @@ import type { Column, ContactItem, CVContent, PageLocation, Section, SectionKind
 import { cn } from '@/lib/utils'
 import { AutoTextarea, Field } from './fields'
 import { KIND_LABELS, SectionItems } from './section-editors'
-import { move, SortableList, SortableRow } from './sortable'
+import { move, SortableGroup, SortableList, SortableRow, useListSensors } from './sortable'
 
 type Update = CvEditor['update']
 
@@ -100,10 +101,7 @@ export function ContentEditor({ content, update, focus, locked, oneColumn = fals
             {oneColumn ? (
               <ColumnSections column="all" title="Rubriques" content={content} update={update} open={open} onToggle={toggle} />
             ) : (
-              <>
-                <ColumnSections column="left" title="Colonne de gauche" content={content} update={update} open={open} onToggle={toggle} />
-                <ColumnSections column="right" title="Colonne de droite" content={content} update={update} open={open} onToggle={toggle} />
-              </>
+              <ColumnsBoard content={content} update={update} open={open} onToggle={toggle} />
             )}
           </div>
         </fieldset>
@@ -382,6 +380,82 @@ function newId(content: CVContent, kind: SectionKind): string {
   return `${kind}-${n}`
 }
 
+const DROP = 'colonne:'
+
+/** Les deux colonnes dans un même glisser-déposer : une rubrique glissée dans l'autre colonne
+ * y passe (le menu « Passer dans la colonne… » reste). */
+function ColumnsBoard({ content, update, open, onToggle }: Omit<ColumnSectionsProps, 'column' | 'title'>) {
+  const sensors = useListSensors()
+  const [dragging, setDragging] = useState<string | null>(null)
+  const columnOf = (id: string): Column | null => {
+    if (id.startsWith(DROP)) return id.slice(DROP.length) as Column
+    return content.sections.find((s) => s.id === id)?.column ?? null
+  }
+  const onDragOver = ({ active, over }: DragOverEvent) => {
+    if (!over) return
+    const id = String(active.id)
+    const target = String(over.id)
+    const from = columnOf(id)
+    const to = columnOf(target)
+    if (!from || !to || from === to) return
+    update((d) => {
+      const moving = d.sections.find((s) => s.id === id)
+      if (!moving) return
+      moving.column = to
+      const rest = d.sections.filter((s) => s.id !== id)
+      let at = rest.findIndex((s) => s.id === target)
+      // Lâchée sur la colonne elle-même (vide, ou sous ses rubriques) : à la fin.
+      if (at < 0) at = rest.map((s) => s.column).lastIndexOf(to) + 1
+      rest.splice(at, 0, moving)
+      d.sections = rest
+    }, `glisser-${id}`)
+  }
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    setDragging(null)
+    if (!over || active.id === over.id) return
+    const id = String(active.id)
+    const target = String(over.id)
+    if (target.startsWith(DROP)) return
+    update((d) => {
+      const from = d.sections.findIndex((s) => s.id === id)
+      const to = d.sections.findIndex((s) => s.id === target)
+      if (from < 0 || to < 0 || d.sections[from].column !== d.sections[to].column) return
+      move(d.sections, from, to)
+    }, `glisser-${id}`)
+  }
+  const draggedColumn = dragging ? columnOf(dragging) : null
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={({ active }) => setDragging(String(active.id))}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => setDragging(null)}
+    >
+      <ColumnSections column="left" title="Colonne de gauche" content={content} update={update} open={open} onToggle={onToggle} shared dragging={dragging !== null} holds={draggedColumn === 'left'} />
+      <ColumnSections column="right" title="Colonne de droite" content={content} update={update} open={open} onToggle={onToggle} shared dragging={dragging !== null} holds={draggedColumn === 'right'} />
+    </DndContext>
+  )
+}
+
+/** La zone d'une colonne où lâcher une rubrique (même vide). */
+function DropZone({ column, active, holds, children }: { column: Column; active: boolean; holds: boolean; children: React.ReactNode }) {
+  const { setNodeRef } = useDroppable({ id: `${DROP}${column}` })
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        '-m-1.5 rounded-2xl p-1.5 transition-colors',
+        active && 'outline-2 outline-offset-0 outline-dashed outline-border',
+        active && holds && 'bg-accent/40 outline-primary/50',
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
 interface ColumnSectionsProps {
   // « all » : toutes les rubriques, pour la mise en page à une colonne.
   column: Column | 'all'
@@ -390,9 +464,13 @@ interface ColumnSectionsProps {
   update: Update
   open: ReadonlySet<string>
   onToggle: (id: string, open: boolean) => void
+  // Dans le glisser-déposer commun aux deux colonnes (``ColumnsBoard``).
+  shared?: boolean
+  dragging?: boolean
+  holds?: boolean
 }
 
-function ColumnSections({ column, title, content, update, open, onToggle }: ColumnSectionsProps) {
+function ColumnSections({ column, title, content, update, open, onToggle, shared = false, dragging = false, holds = false }: ColumnSectionsProps) {
   const mine = (s: Section) => column === 'all' || s.column === column
   const sections = content.sections.filter(mine)
   const ids = sections.map((s) => s.id)
@@ -407,10 +485,31 @@ function ColumnSections({ column, title, content, update, open, onToggle }: Colu
       d.sections = column === 'left' ? [...order, ...others] : [...others, ...order]
     })
 
+  const list = (
+    <div className="flex flex-col gap-2">
+      {sections.map((section) => (
+        <SortableRow key={section.id} id={section.id}>
+          {(handle) => (
+            <SectionCard section={section} handle={handle} update={update} open={open.has(section.id)} onOpenChange={(next) => onToggle(section.id, next)} columns={column !== 'all'} />
+          )}
+        </SortableRow>
+      ))}
+      {sections.length === 0 && (
+        <p className="rounded-xl border border-dashed p-6 text-center text-[12px] text-muted-foreground">
+          {shared ? 'Aucune section dans cette colonne : glisses-en une ici.' : 'Aucune section dans cette colonne.'}
+        </p>
+      )}
+    </div>
+  )
+
   return (
     <Block
       title={title}
-      hint="Glisser pour réordonner. L'œil masque une section sans la supprimer."
+      hint={
+        shared
+          ? "Glisse une section pour la réordonner ou la passer dans l'autre colonne. L'œil la masque sans la supprimer."
+          : "Glisser pour réordonner. L'œil masque une section sans la supprimer."
+      }
       action={
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -432,22 +531,15 @@ function ColumnSections({ column, title, content, update, open, onToggle }: Colu
         </DropdownMenu>
       }
     >
-      <SortableList ids={ids} onMove={onMove}>
-        <div className="flex flex-col gap-2">
-          {sections.map((section) => (
-            <SortableRow key={section.id} id={section.id}>
-              {(handle) => (
-                <SectionCard section={section} handle={handle} update={update} open={open.has(section.id)} onOpenChange={(next) => onToggle(section.id, next)} columns={column !== 'all'} />
-              )}
-            </SortableRow>
-          ))}
-          {sections.length === 0 && (
-            <p className="rounded-xl border border-dashed p-6 text-center text-[12px] text-muted-foreground">
-              Aucune section dans cette colonne.
-            </p>
-          )}
-        </div>
-      </SortableList>
+      {shared && column !== 'all' ? (
+        <DropZone column={column} active={dragging} holds={holds}>
+          <SortableGroup ids={ids}>{list}</SortableGroup>
+        </DropZone>
+      ) : (
+        <SortableList ids={ids} onMove={onMove}>
+          {list}
+        </SortableList>
+      )}
     </Block>
   )
 }

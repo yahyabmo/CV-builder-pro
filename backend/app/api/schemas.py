@@ -1,5 +1,7 @@
 """Les formes des réponses de l'API."""
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from app.models.content import CVContent
@@ -26,8 +28,14 @@ class CVSummary(BaseModel):
 class CVDetail(CVSummary):
     content: CVContent
     style: CVStyle
-    # La forme vient du PDF d'origine (clone.json) : l'onglet Style ne s'y applique pas.
+    # Le CV a une forme clonée de son PDF d'origine (clone.json) ; ``shape`` dit laquelle des
+    # deux formes il prend (l'onglet Style ne s'applique qu'à « app »).
     cloned: bool = False
+    shape: Literal["clone", "app"] = "clone"
+
+
+class ShapeIn(BaseModel):
+    shape: Literal["clone", "app"]
 
 
 class LatexErrorOut(BaseModel):

@@ -7,6 +7,7 @@ import {
   Heading,
   LayoutTemplate,
   List,
+  Loader2,
   ListOrdered,
   Palette as PaletteIcon,
   Type,
@@ -14,13 +15,11 @@ import {
 import { useState } from 'react'
 import { toast } from 'sonner'
 
-import { Button } from '@/components/ui/button'
 import { move, SortableList, SortableRow } from '@/components/editor/sortable'
 import type { CvEditor } from '@/hooks/use-cv-editor'
-import { api } from '@/lib/api'
 import { useFonts } from '@/hooks/use-fonts'
 import { applyPalette, ELEMENTS, elementValue, fromColor, MOODS, PALETTES, samePalette, warnings, type Mood, type Palette } from '@/lib/palettes'
-import type { BlockKey, Column, CVContent, CVStyle, PaletteKey, TextStyle } from '@/lib/types'
+import type { BlockKey, CloneShape, Column, CVContent, CVStyle, PaletteKey, Section, TextStyle } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import {
   ColorPicker,
@@ -49,9 +48,18 @@ interface StyleEditorProps {
 
 export function StyleEditor({ slug, style, content, editor }: StyleEditorProps) {
   const set = editor.updateStyle
-  if (editor.detail?.cloned) return <CloneNotice slug={slug} />
+  const cloned = Boolean(editor.detail?.cloned)
+  const shape = editor.detail?.shape ?? 'clone'
+  if (cloned && shape === 'clone') {
+    return (
+      <div className="flex flex-col gap-2.5 pb-24">
+        <ShapeSwitch editor={editor} />
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col gap-2.5 pb-24">
+      {cloned && <ShapeSwitch editor={editor} />}
       <ThemesPanel style={style} replaceStyle={editor.replaceStyle} baseSlug={editor.detail?.meta.source ?? 'base'} />
       <ColorsGroup style={style} set={set} />
       <TypographyGroup style={style} set={set} />
@@ -59,7 +67,7 @@ export function StyleEditor({ slug, style, content, editor }: StyleEditorProps) 
       <BulletsGroup style={style} set={set} />
       <FramesGroup style={style} set={set} />
       <PhotoPanel slug={slug} style={style} set={set} editor={editor} />
-      <LayoutGroup style={style} set={set} />
+      <LayoutGroup style={style} set={set} onOneColumn={() => editor.update((d) => void (d.sections = mainFirst(d.sections, style)))} />
       <SectionsGroup content={content} update={editor.update} />
     </div>
   )
@@ -558,7 +566,17 @@ function FramesGroup({ style, set }: { style: CVStyle; set: UpdateStyle }) {
 
 const GAP = 0.04 // espace entre les deux colonnes, en part de la largeur
 
-function LayoutGroup({ style, set }: { style: CVStyle; set: UpdateStyle }) {
+/** En passant à une colonne : les rubriques de la grande colonne d'abord (l'expérience avant
+ * les langues), chacune dans son ordre. Un ordre déjà mêlé à la main reste tel quel. */
+function mainFirst(sections: Section[], style: CVStyle): Section[] {
+  const columns = sections.map((s) => s.column)
+  const changes = columns.filter((c, i) => i > 0 && c !== columns[i - 1]).length
+  if (changes > 1) return sections
+  const main: Column = style.columns.right_width >= style.columns.left_width ? 'right' : 'left'
+  return [...sections.filter((s) => s.column === main), ...sections.filter((s) => s.column !== main)]
+}
+
+function LayoutGroup({ style, set, onOneColumn }: { style: CVStyle; set: UpdateStyle; onOneColumn: () => void }) {
   const p = style.page
   const c = style.columns
   const sp = style.spacing
@@ -588,7 +606,10 @@ function LayoutGroup({ style, set }: { style: CVStyle; set: UpdateStyle }) {
       <Row label="Mise en page" hint={c.layout === 'one' ? "Les rubriques l'une sous l'autre, dans l'ordre du contenu" : undefined}>
         <Segmented
           value={c.layout}
-          onChange={(v) => set((s) => void (s.columns.layout = v))}
+          onChange={(v) => {
+            if (v === 'one' && c.layout !== 'one') onOneColumn()
+            set((s) => void (s.columns.layout = v))
+          }}
           options={[
             { value: 'two', label: 'Deux colonnes' },
             { value: 'one', label: 'Une colonne' },
@@ -701,41 +722,56 @@ function SectionsGroup({ content, update }: { content: CVContent; update: CvEdit
 }
 
 
-/** Un CV cloné : sa forme vient de son PDF d'origine, les réglages de style ne s'y appliquent pas. */
-function CloneNotice({ slug }: { slug: string }) {
+/** Un CV cloné : sa forme, celle de son PDF d'origine ou la mise en page de l'appli. Le clone
+ * reste gardé à côté : on passe de l'une à l'autre quand on veut. */
+function ShapeSwitch({ editor }: { editor: CvEditor }) {
   const [busy, setBusy] = useState(false)
-  const [asking, setAsking] = useState(false)
-  const leave = async () => {
+  const shape = editor.detail?.shape ?? 'clone'
+  const choose = async (next: CloneShape) => {
+    if (next === shape || busy) return
     setBusy(true)
     try {
-      await api.dropClone(slug)
-      window.location.reload()
+      await editor.setShape(next)
     } catch (error) {
+      toast.error('Impossible de changer de forme', { description: (error as Error).message })
+    } finally {
       setBusy(false)
-      toast.error('Impossible', { description: (error as Error).message })
     }
   }
+  const options: [CloneShape, string, string][] = [
+    ['clone', 'Copie de ton PDF', "Colonnes, fonds, polices, tailles et écarts de ton PDF d'origine. Tu modifies le contenu ; la forme suit."],
+    ['app', "Mise en page de l'appli", 'Notre mise en page, avec les réglages de style ci-dessous. La copie reste gardée : tu y reviens quand tu veux.'],
+  ]
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-card surface p-4">
-      <span className="text-[14px] font-semibold">Ce CV garde la forme de ton PDF</span>
-      <p className="text-[13px] text-muted-foreground">
-        Sa mise en page est un clone de ton PDF d'origine : colonnes, fonds, polices, tailles et écarts. Tu modifies son contenu comme
-        d'habitude ; la forme suit. Les réglages de style (palettes, polices, colonnes) concernent la mise en page de l'appli.
-      </p>
-      {asking ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted p-3 text-[12.5px]">
-          <span className="flex-1">Le CV prend la mise en page de l'appli. Pour retrouver le clone, il faudra réimporter ton PDF.</span>
-          <Button size="sm" variant="destructive" disabled={busy} onClick={() => void leave()}>
-            Passer au style de l'appli
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
-            Garder le clone
-          </Button>
-        </div>
-      ) : (
-        <Button variant="outline" size="sm" className="self-start" onClick={() => setAsking(true)}>
-          Passer au style de l'appli…
-        </Button>
+    <div className="@container flex flex-col gap-3 rounded-xl border bg-card surface p-4">
+      <div className="flex items-center gap-2">
+        <span className="flex-1 text-[14px] font-semibold">Forme du CV</span>
+        {busy && <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Changement en cours" />}
+      </div>
+      <div role="radiogroup" aria-label="Forme du CV" className="grid grid-cols-1 gap-2 @[28rem]:grid-cols-2">
+        {options.map(([value, title, hint]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={shape === value}
+            disabled={busy}
+            onClick={() => void choose(value)}
+            className={cn(
+              'flex flex-col items-start gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors disabled:opacity-70',
+              shape === value ? 'border-primary bg-accent/40 ring-2 ring-primary/15' : 'bg-background hover:border-primary/40',
+            )}
+          >
+            <span className="flex items-center gap-2 text-[13px] font-semibold">
+              <span className={cn('size-3.5 shrink-0 rounded-full border-[1.5px]', shape === value ? 'border-[4.5px] border-primary' : 'border-muted-foreground/50')} />
+              {title}
+            </span>
+            <span className="pl-5.5 text-[12px] text-muted-foreground">{hint}</span>
+          </button>
+        ))}
+      </div>
+      {shape === 'clone' && (
+        <p className="text-[12.5px] text-muted-foreground">Les réglages de style (palettes, polices, colonnes) concernent la mise en page de l'appli.</p>
       )}
     </div>
   )

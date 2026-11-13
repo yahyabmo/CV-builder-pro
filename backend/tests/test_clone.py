@@ -47,6 +47,10 @@ def test_page_is_read_word_by_word_with_its_shapes_and_photo() -> None:
 def test_family_names() -> None:
     assert reading.family_name("ABCDEF+Poppins-BoldItalic") == "Poppins"
     assert reading.family_name("ArialMT") == "Arial"
+    # Les polices cm-super d'un CV fait en LaTeX : Latin Modern, pas une autre.
+    assert reading.family_name("ABCDEF+SFRM1000") == "LMRoman"
+    assert reading.family_name("SFXC1000") == "LMRomanCaps"
+    assert reading.family_name("SFSS1200") == "LMSans"
 
 
 def test_structure_finds_columns_titles_and_sections() -> None:
@@ -132,6 +136,26 @@ def test_the_sample_is_cloned_word_for_word(tmp_path: Path) -> None:
 
 
 @needs_latex
+def test_a_click_on_a_clone_frames_its_entry_inside_its_column(tmp_path: Path) -> None:
+    from app.services import locate
+
+    content = _demo()
+    content.header.photo = ""
+    assert build.clone_into(tmp_path, SAMPLE, content, online=False).ok
+    placed = locate.positions(tmp_path)
+    assert placed, "LaTeX écrit la place de chaque unité"
+    layout = cv_store.load_clone(tmp_path)
+    bullet = next(u for u in layout.units if u.mark == "bullet experience 0 1")
+    where = next(p for p in placed if p.unit == str(bullet.id))
+    found = locate.locate(tmp_path, (where.x0 + where.x1) / 2, (where.top + where.bottom) / 2)
+    assert found is not None and (found.section, found.item, found.bullet) == ("experience", 0, 1)
+    # Le cadre de l'entrée : dans la colonne de droite, pas sur toute la page.
+    box = found.box
+    assert box is not None and box.x > 200 and box.w < 0.6 * layout.pages[0].width, box
+    assert box.x <= where.x0 and where.x1 <= box.x + box.w
+
+
+@needs_latex
 def test_an_edited_clone_reflows_without_overlap(tmp_path: Path) -> None:
     from app.latex.compile import compile_tex
 
@@ -158,6 +182,27 @@ def test_an_edited_clone_reflows_without_overlap(tmp_path: Path) -> None:
     # L'en-tête, au-dessus de tout changement, reste à sa place exacte.
     head = next(line for line in clone.lines if line.text == "CAMILLE LAURENT")
     assert abs(head.baseline - 55.96) < 0.05
+
+
+@needs_latex
+def test_a_field_empty_when_cloned_shows_once_filled(tmp_path: Path) -> None:
+    """La mention vide d'une expérience n'avait pas de place sur la page : remplie après le
+    clonage, elle s'écrit sur la ligne de son entrée, sans rien chevaucher."""
+    from app.latex.compile import compile_tex
+
+    content = _demo()
+    content.header.photo = ""
+    assert build.clone_into(tmp_path, SAMPLE, content, online=False).ok
+    layout = cv_store.load_clone(tmp_path)
+    assert layout.snapshot and "experience.1.tag" not in layout.snapshot
+    experience = next(s for s in content.sections if s.id == "experience")
+    experience.items[1].tag = "Mention ajoutée"
+    result = compile_tex(build.write(tmp_path, layout, content))
+    assert result.ok
+    texts = " ".join(line.text for line in reading.read(tmp_path / "cv.pdf")[0].lines)
+    assert "Mention ajoutée" in texts
+    diff = report.compare(reading.read(SAMPLE), tmp_path / "cv.pdf")
+    assert not diff.overlaps, diff.overlaps[:5]
 
 
 @needs_latex
@@ -205,10 +250,32 @@ def test_import_with_clone_keeps_the_form(client: TestClient) -> None:
     slug = client.post("/api/cvs", json={"name": "Offre"}).json()["slug"]
     assert (cv_store.folder(slug) / cv_store.CLONE).is_file()
 
-    # Revalidé au style de l'appli : le clone part.
+    # La forme de l'appli, puis retour au clone : il reste gardé.
+    out = client.put("/api/cvs/base/shape", json={"shape": "app"}).json()
+    assert out["ok"] and (base / cv_store.CLONE).is_file()
+    assert "CV cloné" not in client.get("/api/cvs/base/source").json()["tex"]
+    assert client.get("/api/cvs/base").json()["shape"] == "app"
+    assert client.put("/api/cvs/base/shape", json={"shape": "clone"}).json()["ok"]
+    assert "CV cloné" in client.get("/api/cvs/base/source").json()["tex"]
+
+    # Validé dans notre forme : le clone est gardé à côté, pour plus tard.
+    client.post(
+        "/api/welcome/apply",
+        json={
+            "content": content,
+            "import_id": reading_out["id"],
+            "clone": True,
+            "clone_active": False,
+        },
+    )
+    assert (base / cv_store.CLONE).is_file()
+    assert "CV cloné" not in client.get("/api/cvs/base/source").json()["tex"]
+
+    # Revalidé au style de l'appli, sans clone : le clone part.
     client.post("/api/welcome/apply", json={"content": content, "import_id": reading_out["id"]})
     assert not (base / cv_store.CLONE).exists()
     assert "CV cloné" not in client.get("/api/cvs/base/source").json()["tex"]
+    assert client.put("/api/cvs/base/shape", json={"shape": "clone"}).status_code == 409
 
 
 @needs_latex
@@ -298,3 +365,159 @@ def test_scan_bullets_and_icons_read_as_letters_are_recognised() -> None:
     assert scan._glyph(bullet, 0) == "marker"
     assert scan._glyph(icon, 0) == "icon"
     assert scan._glyph(word, 0) is None
+
+
+def _styled(text: str, x0: float, top: float, width: float, size: float, bold: bool, color: str):
+    line = _line(text, x0, top, width, size)
+    for w in line.words:
+        w.bold, w.color = bold, color
+    return line
+
+
+def test_a_lone_section_name_in_the_side_column_is_a_title() -> None:
+    """Un scan : « À PROPOS » d'une autre couleur que les titres de droite, dans une colonne
+    dont la lecture met du gras au hasard : c'est un titre quand même ; les coordonnées
+    au-dessus vont dans l'en-tête, pas dans une rubrique de droite."""
+    green, grey = "2E7D5B", "333333"
+    lines = []
+    y = 90.0
+    for title in ("COMPÉTENCES", "EXPÉRIENCE", "FORMATION", "LANGUES"):
+        lines.append(_styled(title, 220, y, 80, 11, True, green))
+        y += 18
+        for n in range(4):
+            lines.append(
+                _styled(
+                    f"• Ligne {n} de la rubrique {title.lower()}", 222, y, 300, 9.5, False, grey
+                )
+            )
+            y += 14
+        y += 10
+    lines.append(_styled("Adresse : 69000 Lyon", 15, 100, 115, 11, False, grey))
+    lines.append(_styled("Email : prenom@example.com", 15, 118, 130, 11, False, grey))
+    lines.append(_styled("A PROPOS", 15, 160, 48, 11, True, "1F4E79"))
+    for n in range(12):
+        lines.append(
+            _styled(
+                f"Phrase {n} du profil, assez longue", 15, 178 + 14 * n, 160, 11, n % 3 == 0, grey
+            )
+        )
+    page = reading.Page(1, 612, 792, sorted(lines, key=lambda line: line.top))
+    found = structure.analyse([page])
+    assert "A PROPOS" in [b.title_text for b in found.blocks]
+    header = " ".join(line.text for line in found.header)
+    assert "Adresse" in header and "Email" in header
+    right = next(b for b in found.blocks if b.title_text == "COMPÉTENCES")
+    assert all("Phrase" not in line.text for line in right.lines)
+
+
+def test_a_bullet_list_of_skills_gives_one_group_per_bullet() -> None:
+    """L'IA a écrit sept puces dans un seul groupe nommé comme la rubrique, et un libellé de
+    coordonnée est resté sous la liste : une compétence par puce, le libellé dans l'en-tête."""
+    from app.models.content import SkillGroup, SkillsSection
+
+    skills = ["Accueil des clients", "Mise en rayon", "Tenue de caisse", "Inventaire"]
+    lines = [_styled("COMPÉTENCES", 40, 90, 90, 11, True, "2E7D5B")]
+    lines += [
+        _styled(f"• {text}", 42, 110 + 14 * n, 140, 9.5, False, "333333")
+        for n, text in enumerate(skills)
+    ]
+    lines.append(_styled("Permis :", 42, 170, 40, 9.5, False, "333333"))
+    page = reading.Page(1, 595, 842, lines)
+    content = CVContent.model_validate_json((DEMO_DIR / "content.json").read_text())
+    for section in content.sections:
+        section.items, section.visible = [], False
+    section = next(s for s in content.sections if s.kind == "skills")
+    section.title, section.visible = "COMPÉTENCES", True
+    section.items = [SkillGroup(label="COMPÉTENCES", text=", ".join(skills))]
+    fixed, done = fill.complete(content, [page])
+    out = next(s for s in fixed.sections if s.kind == "skills")
+    assert isinstance(out, SkillsSection)
+    assert [(g.label, g.text) for g in out.items] == [("", text) for text in skills]
+    assert done.split == len(skills) - 1
+    assert any(
+        "Permis" in (c.text + (c.label or "")) for line in fixed.header.contact_lines for c in line
+    )
+
+
+def test_two_sections_with_the_same_title_become_one() -> None:
+    from app.models.content import ExperienceItem, ExperienceSection
+
+    lines = [_styled("EXPÉRIENCE", 40, 90, 90, 11, True, "2E7D5B")]
+    lines.append(_styled("Animateur de centre de loisirs", 40, 110, 200, 10, True, "333333"))
+    lines.append(
+        _styled("• Encadrement d'un groupe de douze enfants", 42, 124, 260, 9.5, False, "333333")
+    )
+    lines.append(_styled("Vendeur en boulangerie", 40, 145, 220, 10, True, "333333"))
+    lines.append(_styled("• Conseil et vente au comptoir", 42, 159, 240, 9.5, False, "333333"))
+    page = reading.Page(1, 595, 842, lines)
+    content = CVContent.model_validate_json((DEMO_DIR / "content.json").read_text())
+    for section in content.sections:
+        section.items, section.visible = [], False
+    work = [s for s in content.sections if isinstance(s, ExperienceSection)]
+    work[0].title, work[1].title = "EXPÉRIENCE", "EXPÉRIENCE"
+    work[0].items = [
+        ExperienceItem(
+            title="Vendeur en boulangerie",
+            place="",
+            dates="",
+            bullets=["Conseil et vente au comptoir"],
+        )
+    ]
+    work[1].items = [
+        ExperienceItem(
+            title="Animateur de centre de loisirs",
+            place="",
+            dates="",
+            bullets=["Encadrement d'un groupe de douze enfants"],
+        )
+    ]
+    work[0].visible = work[1].visible = True
+    fixed, _ = fill.complete(content, [page])
+    shown = [s for s in fixed.sections if s.visible and s.kind == "experience"]
+    assert len(shown) == 1
+    assert [it.title for it in shown[0].items] == [
+        "Animateur de centre de loisirs",
+        "Vendeur en boulangerie",
+    ]
+
+
+def test_one_column_text_does_not_stretch_to_fill_the_page() -> None:
+    from app.latex.render import render
+    from app.models.style import CVStyle
+
+    def entry_gap(style: CVStyle) -> str:
+        tex = render(_demo(), style)
+        return tex.split("\\newcommand{\\entre}")[1].split("\n")[0]
+
+    style = CVStyle()
+    assert "fil" in entry_gap(style)
+    style.columns.layout = "one"
+    assert "fil" not in entry_gap(style)
+
+
+def test_two_section_titles_side_by_side_each_get_their_lines() -> None:
+    """En bas de page, « LANGUES » et « CENTRES D'INTÉRÊT » côte à côte : deux titres, et
+    chaque ligne va sous celui qui est au-dessus d'elle."""
+    lines = [_styled("COMPÉTENCES", 40, 90, 90, 11, True, "1F4E79")]
+    lines += [
+        _styled(f"Groupe {n} : outils et méthodes", 40, 108 + 13 * n, 300, 9.5, False, "333333")
+        for n in range(3)
+    ]
+    lines.append(_styled("LANGUES", 40, 160, 60, 11, True, "1F4E79"))
+    lines.append(_styled("CENTRES D'INTÉRÊT", 300, 160.8, 110, 11, True, "1F4E79"))
+    for n, (left, right) in enumerate(
+        [
+            ("Anglais : courant", "Randonnée et voyages, lecture de"),
+            ("Espagnol : notions", "romans, photographie"),
+        ]
+    ):
+        lines.append(_styled(left, 40, 178 + 13 * n, 90, 9.5, False, "333333"))
+        lines.append(_styled(right, 300, 178 + 13 * n, 200, 9.5, False, "333333"))
+    page = reading.Page(1, 595, 842, lines)
+    found = structure.analyse([page])
+    blocks = {b.title_text: [line.text for line in b.lines] for b in found.blocks}
+    assert blocks["LANGUES"] == ["Anglais : courant", "Espagnol : notions"]
+    assert blocks["CENTRES D'INTÉRÊT"] == [
+        "Randonnée et voyages, lecture de",
+        "romans, photographie",
+    ]

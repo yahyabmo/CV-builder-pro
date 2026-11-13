@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api'
-import type { CompileResult, CVContent, CVDetail, CVMode, CVStyle } from '@/lib/types'
+import type { CloneShape, CompileResult, CVContent, CVDetail, CVMode, CVStyle } from '@/lib/types'
 import { useHistory } from './use-history'
 
 // L'état d'enregistrement affiché dans la barre de l'éditeur.
@@ -185,6 +185,18 @@ export function useCvEditor(slug: string) {
     setDetail((current) => (current ? { ...current, meta: { ...current.meta, mode } } : current))
   }, [])
 
+  /** La forme d'un CV cloné : celle de son PDF d'origine, ou la mise en page de l'appli. */
+  const setShape = useCallback(
+    async (shape: CloneShape) => {
+      // Une frappe pas encore enregistrée part d'abord : la compilation la prend.
+      await run(false)
+      const result = await api.setShape(slug, shape)
+      setDetail((current) => (current ? { ...current, shape } : current))
+      applyCompile(result)
+    },
+    [slug, run, applyCompile],
+  )
+
   /** Importe une photo (déjà recadrée) : elle remplace celle du CV. */
   const uploadPhoto = useCallback(
     async (file: Blob) => {
@@ -223,6 +235,7 @@ export function useCvEditor(slug: string) {
     recompile: () => void run(true),
     applyCompile,
     setMode,
+    setShape,
     manual: detail?.meta.mode === 'manual',
   }
 }

@@ -19,6 +19,9 @@ class CVMeta(BaseModel):
     kind: Literal["base", "cv"] = "cv"
     # « manual » : le .tex a été modifié à la main et devient la source.
     mode: Literal["visual", "manual"] = "visual"
+    # Un CV cloné (clone.json gardé à côté) : « clone » prend la forme du PDF d'origine,
+    # « app » la mise en page de l'appli et son style ; on passe de l'une à l'autre.
+    shape: Literal["clone", "app"] = "clone"
     source: str | None = None
     # Renseignés pour un CV ciblé (phase 5) : l'offre visée.
     company: str | None = None

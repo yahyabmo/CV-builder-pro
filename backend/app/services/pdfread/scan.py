@@ -1,4 +1,4 @@
-"""Une page de CV scanné, pour le clone : le texte lu par Tesseract et les formes de l'image.
+"""Une page de CV scanné : le texte lu par Tesseract et les formes de l'image.
 
 Un scan n'a ni texte ni formes dans son PDF, seulement une image. Les mots viennent de
 Tesseract (``services/ocr.py``) ; leur couleur et leur graisse se lisent dans l'encre de
@@ -17,9 +17,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat
 
 from app import fonts
 from app.services import ocr
-from app.services.clone import fonts as clone_fonts
-from app.services.clone.likeness import Word as Seen
-from app.services.clone.reading import Line, Page, Shape, Word
+from app.services.pdfread import fonts as pdf_fonts
+from app.services.pdfread.reading import Line, Page, Shape, Word
 
 # Les polices courantes des CV : Word (par leurs équivalents aux mêmes largeurs), puis Canva
 # et les modèles en ligne (téléchargées de Google Fonts au besoin).
@@ -150,9 +149,9 @@ def _likeness(face: ImageFont.FreeTypeFont, text: str, seen: Image.Image) -> flo
 
 
 def _candidates(online: bool) -> list[str]:
-    found = [clone_fonts.resolve(name, online)[0] for name in CANDIDATES]
+    found = [pdf_fonts.resolve(name, online)[0] for name in CANDIDATES]
     for name in ONLINE:
-        font_id = clone_fonts.known(name) or (clone_fonts.download(name) if online else None)
+        font_id = pdf_fonts.known(name) or (pdf_fonts.download(name) if online else None)
         if font_id and font_id not in found:
             found.append(font_id)
     return found + [f for f in fonts.families() if f not in found]
@@ -546,18 +545,3 @@ def _all_words(scanned: ocr.ScannedPage) -> list[tuple]:
 
 def pages(scanned: list[ocr.ScannedPage], folder: Path, online: bool = True) -> list[Page]:
     return [page(s, folder, n, online) for n, s in enumerate(scanned, 1)]
-
-
-def words(scanned: ocr.ScannedPage) -> list[Seen]:
-    """Les mots lus, pour mesurer la ressemblance du clone avec le scan (sans les icônes et les
-    puces lues comme des lettres : le clone les laisse, à raison, dans l'image)."""
-    import copy
-
-    page = copy.deepcopy(scanned)
-    _unglue_icons(page)
-    out = []
-    for line in page.lines:
-        for k, (text, x, y, w, h) in enumerate(line.words):
-            if _glyph(line.words, k) is None:
-                out.append(Seen(text, x, y, w, h))
-    return out

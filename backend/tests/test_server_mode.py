@@ -457,3 +457,20 @@ def test_reinvited_after_erase_gets_in_and_is_seen(server: Path) -> None:
     assert client.get("/api/cvs", headers=dana).status_code == 200
     # La visite d'après la réinvitation est notée, même dans les 5 minutes.
     assert people.load()["dana@example.com"].last_seen is not None
+
+
+def test_the_page_is_never_cached_but_its_assets_are(tmp_path: Path) -> None:
+    """Après une mise à jour, le navigateur reprend la nouvelle interface (index.html sans
+    cache) ; les fichiers d'assets/, au nom changé à chaque version, restent en cache."""
+    from fastapi import FastAPI
+
+    from app.main import _Web
+
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    (tmp_path / "assets" / "app-1a2b.js").write_text("//", encoding="utf-8")
+    web = FastAPI()
+    web.mount("/", _Web(directory=tmp_path, html=True), name="web")
+    client = TestClient(web)
+    assert client.get("/").headers["Cache-Control"] == "no-cache"
+    assert "immutable" in client.get("/assets/app-1a2b.js").headers["Cache-Control"]

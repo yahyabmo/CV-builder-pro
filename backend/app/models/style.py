@@ -130,6 +130,18 @@ class Photo(_Model):
 class HeaderLayout(_Model):
     # « center » : nom, titre, accroche et coordonnées centrés.
     align: Literal["left", "center"] = "left"
+    # Où vont la photo et les coordonnées : en haut sur toute la largeur (« top »), ou en
+    # tête d'une colonne (« left », « right ») avec le nom en tête de l'autre (un CV fait
+    # sous Canva). Deux colonnes seulement.
+    placement: Literal["top", "left", "right"] = "top"
+    # L'accroche dans la colonne de la photo, sous ce titre (sinon sous le nom).
+    summary_side: bool = False
+    summary_title: str = Field(default="PROFIL", max_length=60)
+    # Un fond coloré derrière tout l'en-tête, du haut de la page (CV faits sous Canva) ;
+    # None : pas de fond. Le texte posé dessus prend ``fill_text_color``.
+    fill_color: str | None = None
+    fill_text_color: str = "FFFFFF"
+    fill_padding_pt: float = Field(default=14, ge=0, le=60)
     text_width: float = Field(default=0.78, gt=0.2, le=1)
     name_gap_pt: float = 12
     headline_gap_pt: float = 7
@@ -161,6 +173,10 @@ class Band(_Model):
     color: str = "band"
     column: Literal["left", "right"] = "left"
     top_offset_pt: float = 14
+    # Le texte et les titres posés sur le fond (du blanc sur un fond sombre) ; None : comme
+    # ailleurs.
+    text_color: str | None = None
+    title_color: str | None = None
 
 
 class SectionTitles(_Model):

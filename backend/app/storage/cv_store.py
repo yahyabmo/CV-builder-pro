@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import unicodedata
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from app.latex.render import render
 from app.models.content import CVContent
@@ -27,14 +27,8 @@ META = "meta.json"
 TEX = "main.tex"
 PDF = "cv.pdf"
 THUMB = "miniature.png"
-# La mise en page clonée du PDF d'origine : quand elle existe, le .tex vient d'elle.
-CLONE = "clone.json"
-# Ses images (icônes, logos) : à côté, dans ce dossier.
-CLONE_ASSETS = "clone-images"
-
-if TYPE_CHECKING:
-    from app.services.clone.model import CloneLayout
-    from app.services.clone.plan import AnchoredLayout
+# Ce que laissaient les CV clonés (le clone est retiré) : effacé au premier passage.
+_OLD_CLONE = ("clone.json", "clone-images", "main.pos")
 BASE_SLUG = "base"
 
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
@@ -103,58 +97,24 @@ def touch(path: Path, **changes: object) -> CVMeta:
     return meta
 
 
-def load_clone(path: Path) -> "AnchoredLayout | CloneLayout | None":
-    """La forme clonée du CV : ancrée (version 2), ou la première version des clones."""
-    from app.services.clone.model import CloneLayout
-    from app.services.clone.plan import AnchoredLayout
-
-    file = path / CLONE
-    if not file.is_file():
-        return None
-    raw = file.read_text(encoding="utf-8")
-    try:
-        if json.loads(raw).get("version") == 2:
-            return AnchoredLayout.model_validate_json(raw)
-        return CloneLayout.model_validate_json(raw)
-    except ValueError:
-        return None
-
-
-def copy_clone(origin: Path, target: Path) -> None:
-    """La forme clonée d'un CV (et ses images) recopiée dans un autre ; sinon, retirée."""
-    remove_clone(target)
-    if (origin / CLONE).is_file():
-        shutil.copy2(origin / CLONE, target / CLONE)
-        if (origin / CLONE_ASSETS).is_dir():
-            shutil.copytree(origin / CLONE_ASSETS, target / CLONE_ASSETS)
-
-
-def remove_clone(path: Path) -> None:
-    (path / CLONE).unlink(missing_ok=True)
-    shutil.rmtree(path / CLONE_ASSETS, ignore_errors=True)
+def forget_clone(path: Path) -> None:
+    """Retire ce qu'un ancien clone a laissé dans le dossier du CV."""
+    for name in _OLD_CLONE:
+        target = path / name
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            target.unlink(missing_ok=True)
 
 
 def generated(path: Path) -> str:
-    """Le .tex tiré du contenu : la forme clonée du PDF d'origine, sinon le gabarit et le style."""
-    from app.services.clone.plan import AnchoredLayout
-
+    """Le .tex tiré du contenu et du style."""
     content, style = load(path)
-    layout = load_clone(path) if load_meta(path).shape == "clone" else None
-    if layout is not None:
-        photo = content.header.photo
-        image = photo if photo and (path / photo).is_file() else None
-        if isinstance(layout, AnchoredLayout):
-            from app.services.clone import render as clone_render
-
-            return clone_render.render(layout, content, image)
-        from app.services.clone import tex as clone_tex
-
-        return clone_tex.render(layout, content, image)
     return render(content, style)
 
 
 def write_tex(path: Path) -> Path:
-    """Régénère main.tex depuis content.json (et style.json, ou clone.json)."""
+    """Régénère main.tex depuis content.json et style.json."""
     tex = path / TEX
     tex.write_text(generated(path), encoding="utf-8")
     return tex
@@ -203,8 +163,6 @@ def create(name: str, source: str, kind: Literal["base", "cv"] = "cv") -> str:
     photo = content.header.photo
     if photo and (origin / photo).is_file():
         shutil.copy2(origin / photo, target / photo)
-    # Un CV fait à partir d'un CV cloné garde sa forme.
-    copy_clone(origin, target)
     # Une copie d'un CV en mode manuel garde son code LaTeX, et son mode (sauf un CV classique).
     manual = load_meta(origin).mode == "manual" and kind == "cv"
     if manual:
@@ -216,7 +174,6 @@ def create(name: str, source: str, kind: Literal["base", "cv"] = "cv") -> str:
             kind=kind,
             source=source,
             mode="manual" if manual else "visual",
-            shape=load_meta(origin).shape,
         ),
     )
     return slug

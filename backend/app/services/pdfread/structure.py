@@ -16,7 +16,7 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 
-from app.services.clone.reading import Line, Page, Shape
+from app.services.pdfread.reading import Line, Page, Shape
 
 # Les mots des titres de rubrique, en français et en anglais (sans accents ni espaces).
 VOCABULARY = (

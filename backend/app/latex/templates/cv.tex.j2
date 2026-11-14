@@ -231,17 +231,104 @@
 \BLOCK{endif}
 \BLOCK{endmacro}
 
+\BLOCK{macro summary_text(width)}
+\BLOCK{set frame = s.summary_frame}
+\BLOCK{if frame.visible}
+    \begin{tikzpicture}\node[\BLOCK{if frame.border_pt}draw=\VAR{h.color(frame.border_color)}, line width=\VAR{pt(frame.border_pt)}pt, \BLOCK{endif}\BLOCK{if frame.background_color}fill=\VAR{h.color(frame.background_color)}, \BLOCK{endif}rounded corners=\VAR{pt(frame.radius_pt)}pt, inner sep=\VAR{pt(frame.padding_pt)}pt, text width={\VAR{width}-\VAR{pt(2 * frame.padding_pt + 2 * frame.border_pt)}pt}, align=left]{\VAR{h.size(b.summary)}\VAR{h.fmt(b.summary, rich(c.header.summary))}};\end{tikzpicture}\par
+\BLOCK{elif b.summary.size is none}
+    \VAR{h.fmt(b.summary, rich(c.header.summary))}\par
+\BLOCK{else}
+    {\VAR{h.size(b.summary)}\VAR{h.fmt(b.summary, rich(c.header.summary))}\par}
+\BLOCK{endif}
+\BLOCK{endmacro}
+\BLOCK{macro contact_value(item)}
+\BLOCK{set value = ("\\href{" ~ url(item.url) ~ "}{" ~ e(item.text) ~ "}") if item.url else e(item.text)}
+\BLOCK{if item.bold}
+\VAR{h.fmt(b.contact_strong, value)}\BLOCK{else}
+\VAR{h.fmt(b.contact_value, value)}\BLOCK{endif}
+\BLOCK{endmacro}
+\#{ L'en-tête en tête d'une colonne (« placement » left ou right) : la photo, les coordonnées
+     une par ligne, et l'accroche sous son titre si elle est de ce côté. }
+\BLOCK{macro side_head()}
+\VAR{mark("header")}
+\BLOCK{if s.photo.visible and c.header.photo}
+{\centering
+\begin{minipage}[t]{\VAR{pt(s.photo.size_cm)}cm}
+    \vspace{0pt}
+    \VAR{h.photo(c.header.photo)}
+\end{minipage}\par}
+\vspace{\VAR{pt(s.header.name_gap_pt)}pt}
+\BLOCK{endif}
+\BLOCK{for line in c.header.contact_lines}
+\VAR{mark("contact", loop.index0)}
+\BLOCK{for item in line}
+\BLOCK{if item.label}
+\VAR{h.fmt(b.contact_label, e(item.label) ~ " :")} \BLOCK{endif}
+\VAR{contact_value(item)}\par
+\BLOCK{endfor}
+\BLOCK{endfor}
+\BLOCK{if s.header.summary_side and c.header.summary.strip()}
+\VAR{mark("header")}
+\rubrique{\VAR{e(s.header.summary_title)}}
+\VAR{summary_text("\\linewidth")}
+\BLOCK{endif}
+\vspace{\VAR{pt(s.header.after_contact_pt)}pt}
+\BLOCK{endmacro}
+\#{ Le nom en tête de l'autre colonne, avec le titre, l'accroche si elle reste là, le filet. }
+\BLOCK{macro main_head()}
+\VAR{mark("header")}
+{\VAR{h.size(b.name)}\VAR{h.fmt(b.name, e(c.header.name))}}\par
+\vspace{\VAR{pt(s.header.name_gap_pt)}pt}
+{\VAR{h.size(b.headline)}\VAR{h.fmt(b.headline, e(c.header.headline))}}\par
+\BLOCK{if not s.header.summary_side and c.header.summary.strip()}
+\vspace{\VAR{pt(s.header.headline_gap_pt)}pt}
+\VAR{summary_text("\\linewidth")}
+\BLOCK{endif}
+\BLOCK{if s.header.rule_visible}
+\vspace{\VAR{pt(s.header.rule_before_pt)}pt}
+{\color{\VAR{h.color(s.header.rule_color)}}\rule{\linewidth}{\VAR{pt(s.header.rule_thickness_pt)}pt}}\par
+\vspace{\VAR{pt(s.header.rule_after_pt)}pt}
+\BLOCK{endif}
+\vspace{\VAR{pt(s.header.after_contact_pt)}pt}
+\BLOCK{endmacro}
+\#{ Le texte et les titres posés sur le fond d'une colonne (blanc sur fond sombre). }
+\#{ Le texte posé sur un fond coloré : tout ce qui est en couleur prend celle du texte
+     (ou des titres), les dates un peu plus discrètes. Dans un groupe : rien ne déborde. }
+\BLOCK{macro on_ground(text, title, ground, blocks)}
+\color{\VAR{text}}\colorlet{cvtext}{\VAR{text}}\colorlet{cvlink}{\VAR{text}}\colorlet{cvmuted}{\VAR{text}!80!\VAR{ground}}%
+\colorlet{cvprimary}{\VAR{title}}\colorlet{cvsecondary}{\VAR{title}}\colorlet{cvaccent}{\VAR{title}}%
+\BLOCK{for block in blocks}
+\BLOCK{if block.color and block.color not in ("text", "muted", "link", "primary", "secondary", "accent")}
+\colorlet{\VAR{h.color(block.color)}}{\VAR{title}}%
+\BLOCK{endif}
+\BLOCK{endfor}
+\BLOCK{endmacro}
+\BLOCK{macro band_colors()}
+\BLOCK{set text = h.color(s.band.text_color or s.band.title_color)}
+\VAR{on_ground(text if s.band.text_color else "cvtext", h.color(s.band.title_color or s.band.text_color), h.color(s.band.color), [b.section_title])}
+\BLOCK{endmacro}
 % -------------------- DOCUMENT --------------------
 \begin{document}
+\BLOCK{if b.body.size is not none}
+\renewcommand{\normalsize}{\VAR{h.size(b.body)}}\normalsize
+\BLOCK{endif}
 \BLOCK{if s.palette.text != "000000"}
 \color{cvtext}
 \BLOCK{endif}
 
+\BLOCK{set side = s.header.placement if s.columns.layout == "two" and s.header.placement != "top" else none}
+\BLOCK{if side is none}
 % -------------------- HEADER --------------------
 % La photo, carrée, a exactement la hauteur du bloc de texte à côté.
 \VAR{mark("header")}
 \BLOCK{set photo_on = s.photo.visible and c.header.photo}
 \BLOCK{set centered = s.header.align == "center"}
+\BLOCK{if s.header.fill_color}
+% L'en-tête est d'abord mis en boîte : sa hauteur donne celle du fond.
+\newsavebox{\fondentete}
+\begin{lrbox}{\fondentete}\begin{minipage}[t]{\textwidth}\vspace{0pt}\setlength{\parskip}{\VAR{pt(s.page.parskip_pt)}pt}%
+\VAR{on_ground(h.color(s.header.fill_text_color), h.color(s.header.fill_text_color), h.color(s.header.fill_color), [b.name, b.headline, b.summary, b.contact_label, b.contact_strong, b.contact_value])}
+\BLOCK{endif}
 \newsavebox{\blocentete}
 \sbox{\blocentete}{\begin{minipage}[t]{\VAR{"1" if centered and not photo_on else pt(s.header.text_width)}\textwidth}
     \vspace{0pt}\BLOCK{if centered}\centering\BLOCK{else}\raggedright\BLOCK{endif}
@@ -304,7 +391,16 @@
 \BLOCK{if centered}
 \par}
 \BLOCK{endif}
+\BLOCK{if s.header.fill_color}
+\end{minipage}\end{lrbox}%
+\begin{tikzpicture}[remember picture, overlay]
+  \fill[\VAR{h.color(s.header.fill_color)}] (current page.north west) rectangle ([yshift=-\dimexpr\VAR{pt(s.page.margin_cm)}cm+\topskip+\ht\fondentete+\dp\fondentete+\VAR{pt(s.header.fill_padding_pt)}pt\relax]current page.north east);
+\end{tikzpicture}%
+\noindent\usebox{\fondentete}\par
+\vspace{\VAR{pt(s.header.fill_padding_pt)}pt}
+\BLOCK{endif}
 \vspace{\VAR{pt(s.header.after_contact_pt)}pt}
+\BLOCK{endif}
 
 % -------------------- DEUX COLONNES --------------------
 % Les deux colonnes prennent toute la hauteur restante ; l'espace libre se
@@ -321,7 +417,12 @@
 \VAR{mark("none")}
 \BLOCK{else}
 \BLOCK{if s.columns.fill_page}
+\BLOCK{if side is none}
 \par\setlength{\hauteurcol}{\dimexpr\pagegoal-\pagetotal-\baselineskip-\VAR{pt(s.columns.bottom_safety_pt)}pt\relax}
+\BLOCK{else}
+\#{ La page est encore vide : \pagegoal ne vaut rien, on prend la hauteur du texte. }
+\setlength{\hauteurcol}{\dimexpr\textheight-\baselineskip-\VAR{pt(s.columns.bottom_safety_pt)}pt\relax}
+\BLOCK{endif}
 \BLOCK{set colopt = "[t][\\hauteurcol][s]"}
 \BLOCK{else}
 \par
@@ -335,8 +436,20 @@
 % Fond de la colonne : du haut de la colonne au bas de la page, depuis le bord
 % gauche de la page jusqu'au bout des filets. (Deux compilations.)
 \begin{tikzpicture}[remember picture, overlay]
+\BLOCK{if side is none}
   \fill[\VAR{h.color(s.band.color)}] ([yshift=\VAR{pt(s.band.top_offset_pt)}pt]current page.west |- 0,0) rectangle (\linewidth, 0 |- current page.south);
+\BLOCK{else}
+  \fill[\VAR{h.color(s.band.color)}] (current page.north west) rectangle (\linewidth, 0 |- current page.south);
+\BLOCK{endif}
 \end{tikzpicture}%
+\BLOCK{endif}
+\BLOCK{if s.band.visible and s.band.column == "left" and (s.band.text_color or s.band.title_color)}
+\VAR{band_colors()}
+\BLOCK{endif}
+\BLOCK{if side == "left"}
+\VAR{side_head()}
+\BLOCK{elif side == "right"}
+\VAR{main_head()}
 \BLOCK{endif}
 
 \BLOCK{for sec in left}
@@ -350,8 +463,20 @@
 \VAR{mark("none")}
 \BLOCK{if s.band.visible and s.band.column == "right"}
 \begin{tikzpicture}[remember picture, overlay]
+\BLOCK{if side is none}
   \fill[\VAR{h.color(s.band.color)}] ([yshift=\VAR{pt(s.band.top_offset_pt)}pt]0,0) rectangle (current page.east |- current page.south);
+\BLOCK{else}
+  \fill[\VAR{h.color(s.band.color)}] (0,0 |- current page.north) rectangle (current page.south east);
+\BLOCK{endif}
 \end{tikzpicture}%
+\BLOCK{endif}
+\BLOCK{if s.band.visible and s.band.column == "right" and (s.band.text_color or s.band.title_color)}
+\VAR{band_colors()}
+\BLOCK{endif}
+\BLOCK{if side == "right"}
+\VAR{side_head()}
+\BLOCK{elif side == "left"}
+\VAR{main_head()}
 \BLOCK{endif}
 \setlist*[itemize]{itemsep=\VAR{h.stretch(s.lists.right.itemsep_pt, s.lists.right.itemsep_stretch_pt)}, topsep=\VAR{h.stretch(s.lists.right.topsep_pt, s.lists.right.topsep_stretch_pt)}}
 

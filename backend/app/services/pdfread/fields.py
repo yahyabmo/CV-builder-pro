@@ -15,8 +15,8 @@ import re
 from dataclasses import dataclass, field
 
 from app.models.content import CVContent
-from app.services.clone.reading import Line, Word
-from app.services.clone.structure import Block, Structure, is_marker, key
+from app.services.pdfread.reading import Line, Word
+from app.services.pdfread.structure import Block, Structure, is_marker, key
 
 # ─── Les chemins ─────────────────────────────────────────────────────────────
 

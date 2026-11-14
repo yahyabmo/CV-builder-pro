@@ -2,8 +2,8 @@
 
 Chaque page est rendue à 300 ppp (pdftoppm), puis lue par Tesseract en français et en
 anglais. On garde le texte, pour l'import, et chaque ligne avec sa place (en points,
-comme le reste de l'appli), pour le clone. Tesseract est facultatif : sans lui, un scan
-reste refusé avec la commande à lancer.
+comme le reste de l'appli), pour ranger le contenu et repérer le style. Tesseract est
+facultatif : sans lui, un scan reste refusé avec la commande à lancer.
 """
 
 import csv

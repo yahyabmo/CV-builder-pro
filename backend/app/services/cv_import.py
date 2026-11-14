@@ -1,10 +1,10 @@
 """Un CV en PDF devient la version classique, sans rien réécrire.
 
-1. ``read_pdf`` : le texte, déjà rangé par rubrique d'après la page (``clone.structure`` :
+1. ``read_pdf`` : le texte, déjà rangé par rubrique d'après la page (``pdfread.structure`` :
    colonnes, titres repérés à leur style), et la photo la plus grande (pdfimages).
 2. L'IA range ce texte dans ``ImportedCV`` (prompts/import.md).
 3. ``to_content`` : les rubriques de l'appli, sur le modèle du CV fictif ; puis
-   ``clone.fill.complete`` corrige d'après la page (lignes oubliées, puces coupées, gras,
+   ``pdfread.fill.complete`` corrige d'après la page (lignes oubliées, puces coupées, gras,
    liens).
 4. ``checks`` : les mots absents du PDF, et ce qui serait resté sans rubrique.
 
@@ -48,10 +48,10 @@ from app.models.content import (
 )
 from app.paths import DEMO_DIR, IMPORTS_DIR
 from app.services import ocr, photo
-from app.services.clone import reading as clone_reading
-from app.services.clone import scan as clone_scan
-from app.services.clone import structure as clone_structure
 from app.services.library_import import split_skills
+from app.services.pdfread import reading as pdf_reading
+from app.services.pdfread import scan as pdf_scan
+from app.services.pdfread import structure as pdf_structure
 from app.text import slugify
 
 MAX_BYTES = 10 * 1024 * 1024
@@ -120,8 +120,23 @@ def pdf_text(pdf: Path) -> str:
     return re.sub(r"(\w)-\n(\w)", r"\1\2", text)
 
 
+def _masks(pdf: Path) -> set[int]:
+    """Les numéros des images qui ne sont que des masques de transparence d'une autre (un
+    rectangle blanc de la taille de la photo, bordé de noir) : jamais la photo."""
+    run = subprocess.run(
+        ["pdfimages", "-list", str(pdf)], capture_output=True, text=True, timeout=30, check=False
+    )
+    masks = set()
+    for line in run.stdout.splitlines()[2:]:
+        bits = line.split()
+        if len(bits) > 2 and bits[1].isdigit() and bits[2] in ("smask", "mask", "stencil"):
+            masks.add(int(bits[1]))
+    return masks
+
+
 def _photo(pdf: Path, target: Path) -> bool:
     """Garde la plus grande image à peu près carrée ou en portrait : la photo du CV."""
+    masks = _masks(pdf)
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(
             ["pdfimages", "-png", str(pdf), f"{tmp}/image"],
@@ -131,6 +146,9 @@ def _photo(pdf: Path, target: Path) -> bool:
         )
         best: tuple[int, Path] | None = None
         for image in Path(tmp).glob("*.png"):
+            number = image.stem.rsplit("-", 1)[-1]
+            if number.isdigit() and int(number) in masks:
+                continue
             try:
                 with Image.open(image) as opened:
                     width, height = opened.size
@@ -190,8 +208,8 @@ def read_pdf(data: bytes) -> Reading:
             )
     # Le texte pour l'IA : rangé par rubrique d'après la page (à défaut, celui de pdftotext).
     try:
-        found = clone_structure.analyse(_pages(target, scanned))
-        structured = clone_structure.text(found)
+        found = pdf_structure.analyse(_pages(target, scanned))
+        structured = pdf_structure.text(found)
         if len(re.findall(r"\w+", structured)) >= 0.8 * words:
             text = structured
     except Exception:  # noqa: BLE001 — une page illisible : le texte brut suffit
@@ -206,13 +224,13 @@ def is_scanned(import_id: str) -> bool:
     return (folder(import_id) / ocr.OCR_FILE).is_file()
 
 
-def _pages(target: Path, scanned: bool) -> list[clone_reading.Page]:
+def _pages(target: Path, scanned: bool) -> list[pdf_reading.Page]:
     if scanned:
-        return clone_scan.pages(ocr.load(target) or [], target)
-    return clone_reading.read(target / SOURCE)
+        return pdf_scan.pages(ocr.load(target) or [], target)
+    return pdf_reading.read(target / SOURCE)
 
 
-def pages_of(import_id: str) -> list[clone_reading.Page]:
+def pages_of(import_id: str) -> list[pdf_reading.Page]:
     """Les pages du PDF importé, lues au point près (ou par Tesseract pour un scan)."""
     return _pages(folder(import_id), is_scanned(import_id))
 

@@ -1,20 +1,9 @@
 """Le clonage d'un CV importé : la forme de son PDF recopiée en LaTeX, mot à mot, puis gardée."""
 
-import shutil
-import subprocess
-from pathlib import Path
-
-from fastapi.testclient import TestClient
-
 from app.models.content import CVContent
 from app.paths import DEMO_DIR
-from app.services import cv_import
-from app.services.clone import build, fill, likeness, reading, report, structure
-from app.services.clone import fields as F
-from app.services.clone.model import CloneLayout
-from app.services.clone.plan import AnchoredLayout
-from app.storage import cv_store
-from tests.conftest import needs_latex
+from app.services.pdfread import fields as F
+from app.services.pdfread import fill, reading, structure
 from tests.test_import import isolated  # noqa: F401
 
 SAMPLE = DEMO_DIR / "cv-exemple.pdf"
@@ -118,194 +107,6 @@ def test_marks_are_put_where_the_page_is_bold() -> None:
     assert F.apply_marks("Budget de 600 k€ tenu.", marks) == "Budget de **600 k€** tenu."
 
 
-@needs_latex
-def test_the_sample_is_cloned_word_for_word(tmp_path: Path) -> None:
-    shutil.copy(DEMO_DIR / "imgcv.jpg", tmp_path / "photo.jpg")
-    result = build.clone_into(tmp_path, SAMPLE, _demo(), online=False)
-    assert result.ok and result.pages == 1
-    measured = likeness.measure(SAMPLE, tmp_path / "cv.pdf")
-    assert measured.score >= 98, measured
-    diff = report.compare(reading.read(SAMPLE), tmp_path / "cv.pdf")
-    # Chaque ligne à sa place au point près, sans style perdu ni texte qui se chevauche.
-    assert diff.in_place == 1.0 and diff.max_shift <= 1.0, diff.moved[:5]
-    assert not diff.missing and not diff.restyled and not diff.overlaps and not diff.overflow
-    tex = (tmp_path / "main.tex").read_text()
-    # Les repères du clic sur l'aperçu sont là.
-    assert "%@ item experience 0" in tex and "%@ bullet experience 0 1" in tex
-    assert isinstance(cv_store.load_clone(tmp_path), AnchoredLayout)
-
-
-@needs_latex
-def test_a_click_on_a_clone_frames_its_entry_inside_its_column(tmp_path: Path) -> None:
-    from app.services import locate
-
-    content = _demo()
-    content.header.photo = ""
-    assert build.clone_into(tmp_path, SAMPLE, content, online=False).ok
-    placed = locate.positions(tmp_path)
-    assert placed, "LaTeX écrit la place de chaque unité"
-    layout = cv_store.load_clone(tmp_path)
-    bullet = next(u for u in layout.units if u.mark == "bullet experience 0 1")
-    where = next(p for p in placed if p.unit == str(bullet.id))
-    found = locate.locate(tmp_path, (where.x0 + where.x1) / 2, (where.top + where.bottom) / 2)
-    assert found is not None and (found.section, found.item, found.bullet) == ("experience", 0, 1)
-    # Le cadre de l'entrée : dans la colonne de droite, pas sur toute la page.
-    box = found.box
-    assert box is not None and box.x > 200 and box.w < 0.6 * layout.pages[0].width, box
-    assert box.x <= where.x0 and where.x1 <= box.x + box.w
-
-
-@needs_latex
-def test_an_edited_clone_reflows_without_overlap(tmp_path: Path) -> None:
-    from app.latex.compile import compile_tex
-
-    content = _demo()
-    content.header.photo = ""
-    assert build.clone_into(tmp_path, SAMPLE, content, online=False).ok
-    layout = cv_store.load_clone(tmp_path)
-    experience = next(s for s in content.sections if s.kind == "experience")
-    # Une puce rallongée, une puce ajoutée, une entrée et une compétence retirées.
-    experience.items[0].bullets[1] += " Et une phrase de plus, assez longue pour couler."
-    experience.items[0].bullets.append("Une puce toute neuve, ajoutée après le clonage.")
-    experience.items.pop(1)
-    skills = next(s for s in content.sections if s.kind == "skills")
-    skills.items.pop(1)
-    result = compile_tex(build.write(tmp_path, layout, content))
-    assert result.ok and result.overflow_pt == 0
-    diff = report.compare(reading.read(SAMPLE), tmp_path / "cv.pdf")
-    assert not diff.overlaps, diff.overlaps[:5]
-    assert not diff.overflow
-    clone = reading.read(tmp_path / "cv.pdf")[0]
-    texts = " ".join(line.text for line in clone.lines)
-    assert "Une puce toute neuve" in texts and "Data & IA" not in texts
-    assert "Conseil en librairie" not in texts
-    # L'en-tête, au-dessus de tout changement, reste à sa place exacte.
-    head = next(line for line in clone.lines if line.text == "CAMILLE LAURENT")
-    assert abs(head.baseline - 55.96) < 0.05
-
-
-@needs_latex
-def test_a_field_empty_when_cloned_shows_once_filled(tmp_path: Path) -> None:
-    """La mention vide d'une expérience n'avait pas de place sur la page : remplie après le
-    clonage, elle s'écrit sur la ligne de son entrée, sans rien chevaucher."""
-    from app.latex.compile import compile_tex
-
-    content = _demo()
-    content.header.photo = ""
-    assert build.clone_into(tmp_path, SAMPLE, content, online=False).ok
-    layout = cv_store.load_clone(tmp_path)
-    assert layout.snapshot and "experience.1.tag" not in layout.snapshot
-    experience = next(s for s in content.sections if s.id == "experience")
-    experience.items[1].tag = "Mention ajoutée"
-    result = compile_tex(build.write(tmp_path, layout, content))
-    assert result.ok
-    texts = " ".join(line.text for line in reading.read(tmp_path / "cv.pdf")[0].lines)
-    assert "Mention ajoutée" in texts
-    diff = report.compare(reading.read(SAMPLE), tmp_path / "cv.pdf")
-    assert not diff.overlaps, diff.overlaps[:5]
-
-
-@needs_latex
-def test_a_clone_that_grows_says_it_overflows(tmp_path: Path) -> None:
-    from app.latex.compile import compile_tex
-
-    content = _demo()
-    content.header.photo = ""
-    assert build.clone_into(tmp_path, SAMPLE, content, online=False).ok
-    layout = cv_store.load_clone(tmp_path)
-    projects = next(s for s in content.sections if s.kind == "projects")
-    for n in range(3):
-        projects.items.append(projects.items[0].model_copy(update={"title": f"Projet {n}"}))
-    result = compile_tex(build.write(tmp_path, layout, content))
-    assert result.ok and result.overflow_pt > 0
-    diff = report.compare(reading.read(SAMPLE), tmp_path / "cv.pdf")
-    assert not diff.overlaps, diff.overlaps[:5]
-    assert "Projet 2" in " ".join(line.text for line in reading.read(tmp_path / "cv.pdf")[0].lines)
-
-
-@needs_latex
-def test_import_with_clone_keeps_the_form(client: TestClient) -> None:
-    sample = client.get("/api/welcome/demo-pdf").content
-    reading_out = client.post("/api/welcome/import", files={"file": ("cv.pdf", sample)}).json()
-    read = client.post(f"/api/welcome/import/{reading_out['id']}/read").json()
-    content = read["content"]
-    assert not [c for c in read["checks"] if c["kind"] == "unplaced"]
-    out = client.post(f"/api/welcome/import/{reading_out['id']}/clone", json={"content": content})
-    clone = out.json()
-    assert clone["available"] and clone["ok"] and clone["likeness"] >= 95, clone
-    assert any("place exacte" in k for k in clone["kept"]), clone["kept"]
-    # Le contrôle est parfait : le clone est proposé par défaut, sans avertissement.
-    assert clone["recommended"] is True and clone["warning"] is None
-    assert client.get(f"/api/welcome/import/{reading_out['id']}/clone.pdf").content[:4] == b"%PDF"
-
-    applied = client.post(
-        "/api/welcome/apply",
-        json={"content": content, "import_id": reading_out["id"], "clone": True},
-    ).json()
-    assert applied["compile"]["ok"]
-    base = cv_store.folder("base")
-    assert (base / cv_store.CLONE).is_file()
-    assert "CV cloné" in client.get("/api/cvs/base/source").json()["tex"]
-    # Un CV ciblé fait à partir de lui garde sa forme.
-    slug = client.post("/api/cvs", json={"name": "Offre"}).json()["slug"]
-    assert (cv_store.folder(slug) / cv_store.CLONE).is_file()
-
-    # La forme de l'appli, puis retour au clone : il reste gardé.
-    out = client.put("/api/cvs/base/shape", json={"shape": "app"}).json()
-    assert out["ok"] and (base / cv_store.CLONE).is_file()
-    assert "CV cloné" not in client.get("/api/cvs/base/source").json()["tex"]
-    assert client.get("/api/cvs/base").json()["shape"] == "app"
-    assert client.put("/api/cvs/base/shape", json={"shape": "clone"}).json()["ok"]
-    assert "CV cloné" in client.get("/api/cvs/base/source").json()["tex"]
-
-    # Validé dans notre forme : le clone est gardé à côté, pour plus tard.
-    client.post(
-        "/api/welcome/apply",
-        json={
-            "content": content,
-            "import_id": reading_out["id"],
-            "clone": True,
-            "clone_active": False,
-        },
-    )
-    assert (base / cv_store.CLONE).is_file()
-    assert "CV cloné" not in client.get("/api/cvs/base/source").json()["tex"]
-
-    # Revalidé au style de l'appli, sans clone : le clone part.
-    client.post("/api/welcome/apply", json={"content": content, "import_id": reading_out["id"]})
-    assert not (base / cv_store.CLONE).exists()
-    assert "CV cloné" not in client.get("/api/cvs/base/source").json()["tex"]
-    assert client.put("/api/cvs/base/shape", json={"shape": "clone"}).status_code == 409
-
-
-@needs_latex
-def test_a_two_page_pdf_is_cloned_page_by_page(client: TestClient, tmp_path: Path) -> None:
-    sample = client.get("/api/welcome/demo-pdf").content
-    reading_out = client.post("/api/welcome/import", files={"file": ("cv.pdf", sample)}).json()
-    content = client.post(f"/api/welcome/import/{reading_out['id']}/read").json()["content"]
-    # Un PDF de deux pages : la même page deux fois.
-    two = tmp_path / "deux.pdf"
-    subprocess.run(["pdfunite", str(SAMPLE), str(SAMPLE), str(two)], check=True)
-    shutil.copy(two, cv_import.folder(reading_out["id"]) / cv_import.SOURCE)
-    clone = client.post(
-        f"/api/welcome/import/{reading_out['id']}/clone", json={"content": content}
-    ).json()
-    assert clone["available"] and clone["ok"], clone
-    assert "2 pages, chacune à sa forme" in clone["kept"]
-    pdf = cv_import.folder(reading_out["id"]) / "clone" / "cv.pdf"
-    assert likeness.pages(pdf) == 2
-
-
-def test_a_first_version_clone_still_renders(tmp_path: Path) -> None:
-    """Les CV clonés avant la mise en page ancrée gardent leur forme."""
-    content = _demo()
-    cv_store.save(tmp_path, content, cv_store.load(DEMO_DIR)[1])
-    (tmp_path / cv_store.CLONE).write_text(CloneLayout().model_dump_json())
-    assert isinstance(cv_store.load_clone(tmp_path), CloneLayout)
-    tex = cv_store.generated(tmp_path)
-    assert "CV cloné" in tex and "\\cvline" not in tex
-
-
 def _line(text: str, x0: float, top: float, width: float, size: float = 9.0) -> reading.Line:
     words, x = [], x0
     step = width / max(len(text.split()), 1)
@@ -351,7 +152,7 @@ def test_columns_are_found_under_a_full_width_header_and_footer() -> None:
 
 
 def test_scan_bullets_and_icons_read_as_letters_are_recognised() -> None:
-    from app.services.clone import scan
+    from app.services.pdfread import scan
 
     # Les mesures d'un vrai scan : une puce de 3 pt suivie d'un blanc deux fois plus large.
     bullet = [
@@ -578,23 +379,6 @@ def test_education_bullets_are_rendered_by_our_template() -> None:
     assert "%@ bullet formation 0 1" in tex and "Mention bien" in tex
 
 
-@needs_latex
-def test_an_edited_contact_label_shows_even_if_the_page_had_an_icon(tmp_path: Path) -> None:
-    """Le libellé d'une coordonnée n'était pas sur la page (une icône à sa place) : écrit
-    après le clonage, il apparaît devant sa coordonnée."""
-    from app.latex.compile import compile_tex
-
-    content = _demo()
-    content.header.photo = ""
-    assert build.clone_into(tmp_path, SAMPLE, content, online=False).ok
-    layout = cv_store.load_clone(tmp_path)
-    item = F.contacts(content)[0]
-    item.label = "Adresse postale"
-    assert compile_tex(build.write(tmp_path, layout, content)).ok
-    texts = " ".join(line.text for line in reading.read(tmp_path / "cv.pdf")[0].lines)
-    assert "Adresse postale" in texts
-
-
 def test_a_bulleted_education_description_becomes_bullets() -> None:
     from app.models.content import EducationItem
 
@@ -639,3 +423,20 @@ def test_sub_bullets_merged_by_the_ai_are_split_again() -> None:
     fixed, _ = fill.complete(content, [page])
     items = next(s for s in fixed.sections if s.kind == "bullets").items
     assert items[1:] == ["Football", "Boxe", "Natation", "Lecture de romans"]
+
+
+def test_a_bullet_copied_into_the_text_is_dropped() -> None:
+    """« • Test logiciel » : notre liste met déjà sa puce."""
+    content = _demo()
+    section = next(s for s in content.sections if s.kind == "bullets")
+    section.items = ["• Test logiciel", "- DevOps", "C++ - avancé"]
+    fill._no_leading_marker(content)
+    assert section.items == ["Test logiciel", "DevOps", "C++ - avancé"]
+
+
+def test_an_old_clone_setting_is_forgotten() -> None:
+    """Le clone est retiré : un meta.json qui garde « shape » se lit encore."""
+    from app.models.meta import CVMeta
+
+    meta = CVMeta.model_validate({"name": "CV", "shape": "clone"})
+    assert "shape" not in meta.model_dump()

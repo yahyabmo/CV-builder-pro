@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app import fonts
-from app.api.schemas import CompileOut, CVDetail, CVSummary, LatexErrorOut, ShapeIn
+from app.api.schemas import CompileOut, CVDetail, CVSummary, LatexErrorOut
 from app.latex.compile import CompileResult, LatexNotInstalled
 from app.latex.render import render
 from app.models import application
@@ -148,29 +148,7 @@ def get_cv(slug: str) -> CVDetail:
         **summary(slug).model_dump(),
         content=content,
         style=style,
-        cloned=(path / cv_store.CLONE).is_file(),
-        shape=cv_store.load_meta(path).shape,
     )
-
-
-@router.put("/{slug}/shape")
-async def put_shape(slug: str, body: ShapeIn) -> CompileOut:
-    """La forme du CV cloné : celle de son PDF d'origine, ou la mise en page de l'appli. Le
-    clone reste gardé : on revient à l'autre forme quand on veut."""
-    path = _folder(slug)
-    if not (path / cv_store.CLONE).is_file():
-        raise HTTPException(409, "Ce CV n'a pas de forme clonée.")
-    cv_store.touch(path, shape=body.shape)
-    return await compile_now(slug)
-
-
-@router.delete("/{slug}/clone")
-async def drop_clone(slug: str) -> CompileOut:
-    """Quitte la forme clonée du PDF : le CV passe au style de l'appli (onglet Style)."""
-    path = _folder(slug)
-    cv_store.remove_clone(path)
-    cv_store.touch(path)
-    return await compile_now(slug)
 
 
 @router.put("/{slug}/content")

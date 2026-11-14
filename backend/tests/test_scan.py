@@ -11,11 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app.models.content import CVContent
 from app.paths import DEMO_DIR
 from app.services import cv_import, ocr
-from app.services.clone import build, likeness, scan
-from tests.conftest import needs_latex
+from app.services.pdfread import scan
 from tests.test_import import isolated  # noqa: F401
 
 SAMPLE = DEMO_DIR / "cv-exemple.pdf"
@@ -109,20 +107,6 @@ def test_a_scan_page_gives_shapes_and_the_font(tmp_path: Path) -> None:
     assert sum(1 for s in page.shapes if s.kind == "line") >= 4
     names = [line for line in page.lines if line.text == "CAMILLE LAURENT"]
     assert names and names[0].words[0].color != "000000" and names[0].size > 18
-
-
-@needs_latex
-def test_a_scan_is_cloned(tmp_path: Path) -> None:
-    scanned = _fake_scan(tmp_path)
-    content = CVContent.model_validate_json((DEMO_DIR / "content.json").read_text())
-    content.header.photo = ""
-    out = tmp_path / "clone"
-    out.mkdir()
-    pages = scan.pages([scanned], tmp_path, online=False)
-    result = build.clone_into(out, tmp_path / "source.pdf", content, False, pages, scanned=True)
-    assert result.ok
-    measured = likeness.measure(tmp_path / "source.pdf", out / "cv.pdf", [scan.words(scanned)])
-    assert measured.score >= 85, measured
 
 
 def test_without_tesseract_a_scan_is_refused_with_the_command(

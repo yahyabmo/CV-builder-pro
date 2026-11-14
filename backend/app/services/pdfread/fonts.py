@@ -1,4 +1,4 @@
-"""La police du clone pour chaque police du PDF.
+"""La police de l'appli pour chaque police du PDF (lecture d'un scan, style repéré).
 
 1. La même, si l'appli l'a déjà (dossier fonts/ ou polices déjà téléchargées).
 1 bis. La même, installée sur la machine (fontconfig), en fichiers statiques.
@@ -247,7 +247,7 @@ def texlive(name: str) -> str | None:
         folder = paths.EXTRA_FONTS_DIR / font_id
         folder.mkdir(parents=True, exist_ok=True)
         # Pas de gras dans la famille (les petites capitales de Latin Modern) : le maigre,
-        # renommé en gras, que le clone épaissit (« FakeBold » de fontspec).
+        # renommé en gras, que fontspec épaissit (« FakeBold »).
         fake = files["Bold"] == files["Regular"]
         for suffix, path in files.items():
             # Un OpenType sous le nom attendu (.ttf) : XeTeX et Pillow lisent son contenu.

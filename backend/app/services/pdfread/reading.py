@@ -146,7 +146,7 @@ class Page:
     pictures: list[Picture] = field(default_factory=list)
     # Les liens posés sur la page : (x0, y0, x1, y1, adresse).
     links: list[tuple[float, float, float, float, str]] = field(default_factory=list)
-    # Un scan : l'image de la page (le clone la garde en fond, texte lu effacé).
+    # Un scan : l'image de la page.
     background: Path | None = None
 
     def words(self) -> list[Word]:

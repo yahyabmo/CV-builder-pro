@@ -1,5 +1,4 @@
 import type {
-  CloneShape,
   ApplyBaseResult,
   ImportReading,
   ImportResult,
@@ -43,7 +42,6 @@ import type {
   TargetRequest,
   Theme,
   Me,
-  CloneResult,
   SignatureInfo,
   SignatureSize,
   AdminPeople,
@@ -310,15 +308,10 @@ export const api = {
   previewImport: (id: string, content: CVContent, keep: string[] | null = null) =>
     request<CompileResult>(`/api/welcome/import/${id}/preview`, { method: 'POST', body: JSON.stringify({ content, keep }) }),
   importPreviewUrl: (id: string, version: number) => `/api/welcome/import/${id}/preview.pdf?v=${version}`,
-  dropClone: (slug: string) => request<CompileResult>(`/api/cvs/${slug}/clone`, { method: 'DELETE' }),
-  setShape: (slug: string, shape: CloneShape) => request<CompileResult>(`/api/cvs/${slug}/shape`, { method: 'PUT', body: JSON.stringify({ shape }) }),
-  cloneImport: (id: string, content: CVContent) =>
-    request<CloneResult>(`/api/welcome/import/${id}/clone`, { method: 'POST', body: JSON.stringify({ content }) }),
-  importCloneUrl: (id: string, version: number) => `/api/welcome/import/${id}/clone.pdf?v=${version}`,
-  applyBase: (content: CVContent, importId?: string, keepPhoto = true, keep: string[] | null = null, intent: WelcomeIntent | null = null, clone = false, cloneActive = true) =>
+  applyBase: (content: CVContent, importId?: string, keepPhoto = true, keep: string[] | null = null, intent: WelcomeIntent | null = null) =>
     request<ApplyBaseResult>('/api/welcome/apply', {
       method: 'POST',
-      body: JSON.stringify({ content, import_id: importId ?? null, keep_photo: keepPhoto, keep, clone, clone_active: cloneActive, ...intentFields(intent) }),
+      body: JSON.stringify({ content, import_id: importId ?? null, keep_photo: keepPhoto, keep, ...intentFields(intent) }),
     }),
   saveSettings: (ai: AISettings) =>
     request<SettingsInfo>('/api/settings', { method: 'PUT', body: JSON.stringify(ai) }),

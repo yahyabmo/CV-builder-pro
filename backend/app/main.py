@@ -15,6 +15,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+from starlette.types import Scope
 
 from app import access, people, user_keys
 from app.api import (
@@ -103,6 +105,20 @@ def unknown_api(rest: str = "") -> None:
     raise HTTPException(404, f"Adresse inconnue : /api/{rest}")
 
 
+class _Web(StaticFiles):
+    """L'interface construite. ``index.html`` n'est jamais repris d'un cache : il nomme les
+    fichiers de la version en cours (sinon le navigateur garde l'ancienne interface après une
+    mise à jour). Les fichiers de ``assets/`` changent de nom à chaque version : gardés."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        if path.startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # L'interface construite, servie à la racine (après les routes /api).
 if (WEB_DIR / "index.html").exists():
-    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+    app.mount("/", _Web(directory=WEB_DIR, html=True), name="web")

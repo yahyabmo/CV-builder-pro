@@ -32,9 +32,10 @@ from app.models.content import (
     SkillGroup,
     SkillsSection,
 )
-from app.services.clone import fields as F
-from app.services.clone.reading import Line, Page, Word
-from app.services.clone.structure import (
+from app.services.pdfread import fields as F
+from app.services.pdfread.reading import Line, Page, Word
+from app.services.pdfread.structure import (
+    BULLETS,
     SEPARATOR,
     Block,
     Structure,
@@ -737,6 +738,46 @@ def _no_separator(content: CVContent) -> None:
             _put(content, path, re.sub(rf"\s*{SEPARATOR}\s*", " ", text).strip())
 
 
+_SEPARATORS = {"|", "·", "•", "-", "–", "—", "/", ","}
+
+
+def _contact_labels(content: CVContent, structure: Structure) -> bool:
+    """Un libellé de coordonnée écrit sur la page (« Tél : », « Adresse : ») devant une
+    coordonnée que l'IA a lue sans lui (ou avec un autre, « Téléphone ») : il devient son
+    libellé, plutôt qu'une fausse coordonnée de plus."""
+    hits = F.Locator(structure, content).locate()
+    pages = _Pages(structure)
+    items = F.contacts(content)
+    used = {id(w) for h in hits.values() for w in h.words}
+    changed = False
+    for i, item in enumerate(items):
+        hit = hits.get(f"contact.{i}")
+        if hit is None:
+            continue
+        first = hit.words[0]
+        line = pages.line_of[id(first)]
+        # Le libellé : les mots libres juste devant la valeur, jusqu'à une autre coordonnée
+        # ou un séparateur (« Tél : 06… | Adresse : Lyon » : « Adresse » seulement).
+        before: list[Word] = []
+        for word in sorted(
+            (w for w in line.words if w.x1 <= first.x0 + 0.1), key=lambda w: w.x0, reverse=True
+        ):
+            if id(word) in used or is_marker(word.text) or word.text.strip() in _SEPARATORS:
+                break
+            before.insert(0, word)
+        if not before:
+            continue
+        text = " ".join(w.text for w in before).strip()
+        label, colon, rest = text.rpartition(":")
+        label = (label if colon else text).strip()
+        if not label or rest.strip() or not _CONTACT_LABEL.fullmatch(label + " :"):
+            continue
+        if key(label) != key(item.label or ""):
+            item.label = label
+            changed = True
+    return changed
+
+
 def _no_repeated_label(content: CVContent) -> None:
     """Une coordonnée qui répète son libellé (« LinkedIn » : « LinkedIn : prénom-nom ») : le
     texte sans lui."""
@@ -746,6 +787,27 @@ def _no_repeated_label(content: CVContent) -> None:
         head, colon, rest = item.text.partition(":")
         if colon and rest.strip() and key(head) == key(item.label):
             item.text = rest.strip()
+
+
+_LEADING_MARKER = re.compile("^\\s*[" + re.escape(BULLETS) + "*\\uf000-\\uf0ff](?:\\s+|$)")
+
+
+def _no_leading_marker(content: CVContent) -> None:
+    """Une puce recopiée au début du texte (« • Test logiciel ») : notre liste met la sienne."""
+
+    def clean(texts: list[str]) -> list[str]:
+        return [_LEADING_MARKER.sub("", t, count=1) for t in texts]
+
+    for section in content.sections:
+        if section.kind == "bullets":
+            section.items = clean(section.items)
+        elif section.kind in ("education", "experience", "projects"):
+            for item in section.items:
+                item.bullets = clean(item.bullets)
+        elif section.kind == "skills":
+            for group in section.items:
+                if not group.label:
+                    group.text = _LEADING_MARKER.sub("", group.text, count=1)
 
 
 def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
@@ -766,11 +828,14 @@ def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
         structure = analyse(pages, titles())
     if _titles_from_labels(content, structure):
         structure = analyse(pages, titles())
+    if _contact_labels(content, structure):
+        structure = analyse(pages, titles())
     _add_lines(content, structure, report)
     structure = analyse(pages, titles())
     if _titles_from_page(content, structure):
         structure = analyse(pages, titles())
     _marks_and_links(content, structure, report)
+    _no_leading_marker(content)
     for section in content.sections:
         if section.items:
             section.visible = True

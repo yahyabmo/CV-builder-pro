@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from app import fonts, settings
+from app import settings
 from app.ai import llm, targeting, usage_log
 from app.ai.schemas import ImportedCV
 from app.api.cvs import compile_now
@@ -21,13 +21,8 @@ from app.latex.compile import LatexNotInstalled, compile_tex
 from app.models.content import CVContent
 from app.models.meta import CVMeta, now
 from app.paths import DEMO_DIR, server_mode
-from app.services import cv_import, cv_style, library_import, ocr, photo
-from app.services.clone import build as clone_build
-from app.services.clone import fill as clone_fill
-from app.services.clone import likeness
-from app.services.clone import plan as clone_plan
-from app.services.clone import report as clone_report
-from app.services.clone import scan as clone_scan
+from app.services import cv_import, cv_style, library_import, photo
+from app.services.pdfread import fill as pdf_fill
 from app.storage import cv_store, library_store
 
 router = APIRouter(prefix="/api/welcome", tags=["accueil"])
@@ -67,10 +62,6 @@ class ApplyIn(BaseModel):
     # le CV classique remplacé (la première version par défaut).
     new_name: str | None = Field(default=None, max_length=120)
     target: str = cv_store.BASE_SLUG
-    # Garder la forme du PDF clonée (calculée par /clone) ; ``clone_active`` : le CV la prend
-    # tout de suite (sinon la mise en page de l'appli, et le clone reste à côté).
-    clone: bool = False
-    clone_active: bool = True
 
 
 class PreviewIn(BaseModel):
@@ -80,28 +71,6 @@ class PreviewIn(BaseModel):
 
 class StyleOut(BaseModel):
     findings: list[cv_style.Finding]
-
-
-class CloneFont(BaseModel):
-    pdf: str
-    name: str
-    # « identique », « mêmes largeurs » ou « proche ».
-    badge: str
-
-
-class CloneOut(BaseModel):
-    available: bool
-    ok: bool = False
-    # Pourquoi le clone n'est pas possible, ou a échoué.
-    reason: str | None = None
-    likeness: int | None = None
-    fonts: list[CloneFont] = Field(default_factory=list)
-    kept: list[str] = Field(default_factory=list)
-    differences: list[str] = Field(default_factory=list)
-    # Le contrôle mot à mot est quasi parfait : le clone est proposé par défaut. Sinon, un
-    # avertissement, et « Proche du mien » d'abord.
-    recommended: bool = True
-    warning: str | None = None
 
 
 class ApplyOut(BaseModel):
@@ -122,7 +91,8 @@ def _folder(import_id: str):
         raise HTTPException(404, "Import introuvable : recommence depuis l'accueil.") from None
 
 
-STYLE = "style.json"
+# « -2 » : le repérage sur la lecture commune des pages (les anciens calculs sont ignorés).
+STYLE = "style-2.json"
 
 
 def _guess(import_id: str) -> cv_style.Guess:
@@ -135,7 +105,7 @@ def _guess(import_id: str) -> cv_style.Guess:
     if data is None:
         raise HTTPException(404, "Ce PDF n'a pas encore été lu.")
     content = CVContent.model_validate(data["content"])
-    found = cv_style.guess(folder / cv_import.SOURCE, content, cv_import.has_photo(import_id))
+    found = cv_style.guess(cv_import.pages_of(import_id), content, cv_import.has_photo(import_id))
     cached.write_text(found.model_dump_json(), encoding="utf-8")
     return found
 
@@ -149,6 +119,18 @@ def _styled(import_id: str | None, content: CVContent, keep: list[str] | None, s
 
 
 _PREVIEWS: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+
+
+async def _fit(folder, style, pages: int, result, compile_):  # noqa: ANN001, ANN202
+    """Le CV « proche du mien » tient sur autant de pages que son PDF : un cran plus serré
+    à la fois (espaces, marges, tailles), recompilé, jusqu'à ce qu'il tienne."""
+    step = 0
+    while result.ok and result.pages and result.pages > pages and step < cv_style.FIT_STEPS:
+        step += 1
+        style = cv_style.tighter(style, step)
+        cv_store.save_style(folder, style)
+        result = await compile_()
+    return style, result
 
 
 @router.get("")
@@ -225,7 +207,7 @@ async def read(import_id: str) -> ImportResult:
     left = None
     try:
         pages = await asyncio.to_thread(cv_import.pages_of, import_id)
-        content, report = await asyncio.to_thread(clone_fill.complete, content, pages)
+        content, report = await asyncio.to_thread(pdf_fill.complete, content, pages)
         left = report.left
     except Exception:  # noqa: BLE001 — sans la page, la lecture de l'IA reste telle quelle
         pass
@@ -281,132 +263,17 @@ async def preview(import_id: str, body: PreviewIn) -> CompileOut:
         cv_store.save(folder, content, style)
         if content.header.photo:
             shutil.copy(folder.parent / photo.PHOTO, folder / photo.PHOTO)
+
+        async def once():  # noqa: ANN202
+            return await asyncio.to_thread(compile_tex, cv_store.write_tex(folder))
+
         try:
-            result = await asyncio.to_thread(compile_tex, cv_store.write_tex(folder))
+            result = await once()
+            if body.keep is not None:
+                _, result = await _fit(folder, style, _guess(import_id).pages, result, once)
         except LatexNotInstalled as error:
             raise HTTPException(503, str(error)) from None
     return CompileOut(ok=result.ok, pages=result.pages, seconds=round(result.seconds, 2))
-
-
-CLONE_DIR = "clone"
-
-
-def _summary(
-    layout: clone_plan.AnchoredLayout, diff: clone_report.Differences, scanned: bool
-) -> tuple[list[str], list[str]]:
-    """Ce qui est repris à l'identique, et ce qui ne l'est pas, en phrases courtes."""
-    kept, differences = [], []
-    pages = len(layout.pages)
-    if pages > 1:
-        kept.append(f"{pages} pages, chacune à sa forme")
-    columns = len(layout.lanes[0]) if layout.lanes else 1
-    if columns > 1:
-        kept.append(f"{columns} colonnes, aux mêmes largeurs")
-    fills = [
-        p for p in layout.paints if p.fill and (p.box[2] - p.box[0]) * (p.box[3] - p.box[1]) > 4000
-    ]
-    if fills:
-        kept.append("Fonds et bandeaux de couleur")
-    if layout.photo:
-        shape = {"circle": "ronde", "rounded": "aux coins arrondis", "square": "carrée"}
-        kept.append(f"Photo {shape[layout.photo.shape]}, à sa place")
-    if layout.pictures:
-        kept.append("Icônes et images, à leur place")
-    same = sorted({fonts.get(f).name for f, badge in layout.fonts.values() if badge != "proche"})
-    if same:
-        kept.append("Police " + ", ".join(same))
-    if diff.lines and diff.in_place >= 0.999 and not scanned:
-        kept.append(f"Chaque ligne à sa place exacte (écart maximal {diff.max_shift:.1f} pt)")
-    elif not scanned:
-        kept.append(f"{round(100 * diff.in_place)} % des lignes à leur place exacte")
-    if not diff.restyled:
-        kept.append("Gras, italiques, couleurs et tailles du texte")
-    for pdf, (font_id, badge) in sorted(layout.fonts.items()):
-        if badge == "proche":
-            differences.append(
-                f"Police {pdf} : remplacée par {fonts.get(font_id).name}, la plus proche"
-            )
-    differences += clone_report.phrases(diff, scanned)
-    return kept, differences
-
-
-@router.post("/import/{import_id}/clone")
-async def clone_preview(import_id: str, body: PreviewIn) -> CloneOut:
-    """Le CV lu, dans la forme de son PDF : le clone, ancré mot à mot, et sa ressemblance."""
-    origin = _folder(import_id)
-    source = origin / cv_import.SOURCE
-    folder = origin / CLONE_DIR
-    folder.mkdir(exist_ok=True)
-    content = body.content.model_copy(deep=True)
-    if content.header.photo and (origin / photo.PHOTO).exists():
-        shutil.copy(origin / photo.PHOTO, folder / photo.PHOTO)
-        content.header.photo = photo.PHOTO
-    else:
-        content.header.photo = ""
-    # Un scan : les pages et leurs mots viennent de Tesseract et de l'image.
-    scanned = cv_import.is_scanned(import_id)
-    async with _PREVIEWS[f"{import_id}/clone"]:
-        try:
-            pages = await asyncio.to_thread(cv_import.pages_of, import_id)
-            result = await asyncio.to_thread(
-                clone_build.clone_into, folder, source, content, True, pages, scanned
-            )
-        except LatexNotInstalled as error:
-            raise HTTPException(503, str(error)) from None
-        if not result.ok:
-            return CloneOut(available=True, reason="Le clone n'a pas pu être mis en page.")
-        words = [clone_scan.words(p) for p in ocr.load(origin) or []] if scanned else None
-        measured = await asyncio.to_thread(likeness.measure, source, folder / cv_store.PDF, words)
-        diff = await asyncio.to_thread(
-            clone_report.compare, pages, folder / cv_store.PDF, 3.0 if scanned else 1.0
-        )
-    layout = cv_store.load_clone(folder)
-    if not isinstance(layout, clone_plan.AnchoredLayout):
-        return CloneOut(available=True, reason="Le clone n'a pas pu être mis en page.")
-    if scanned:
-        # Un scan ne dit pas sa police : elle est devinée à ses largeurs.
-        layout.fonts = {name: (font_id, "proche") for name, (font_id, _) in layout.fonts.items()}
-    kept, differences = _summary(layout, diff, scanned)
-    if scanned:
-        differences.insert(
-            0,
-            "CV scanné : le texte est lu par reconnaissance de caractères et la police est "
-            "devinée ; relis bien chaque rubrique",
-        )
-    if scanned:
-        recommended = measured.score >= 93 and not diff.overlaps
-    else:
-        recommended = (
-            measured.score >= 97
-            and not diff.missing
-            and not diff.overlaps
-            and not diff.overflow
-            and diff.in_place >= 0.98
-        )
-    return CloneOut(
-        available=True,
-        ok=True,
-        recommended=recommended,
-        warning=None
-        if recommended
-        else "Ce clone n'est pas assez fidèle à ton PDF (voir ci-dessous) : relis-le de près, "
-        "ou choisis « Proche du mien ».",
-        likeness=measured.score,
-        fonts=[
-            CloneFont(pdf=pdf, name=fonts.get(font_id).name, badge=badge)
-            for pdf, (font_id, badge) in sorted(layout.fonts.items())
-        ],
-        kept=kept,
-        differences=differences,
-    )
-
-
-@router.get("/import/{import_id}/clone.pdf")
-def clone_pdf(import_id: str) -> FileResponse:
-    file = _folder(import_id) / CLONE_DIR / cv_store.PDF
-    if not file.exists():
-        raise HTTPException(404, "Pas encore de clone.")
-    return FileResponse(file, media_type="application/pdf", headers={"Cache-Control": "no-store"})
 
 
 @router.get("/import/{import_id}/preview.pdf")
@@ -457,14 +324,7 @@ async def apply(body: ApplyIn) -> ApplyOut:
     cv_store.save_content(base, content)
     cv_store.save_style(base, style)
     cv_store.touch(base, welcome=False)
-    # La forme du PDF, clonée à la relecture ; sinon le style de l'appli (l'ancien clone part).
-    cloned = _folder(body.import_id) / CLONE_DIR if body.import_id else None
-    if body.clone and cloned is not None and (cloned / cv_store.CLONE).exists():
-        cv_store.copy_clone(cloned, base)
-        cv_store.touch(base, shape="clone" if body.clone_active else "app")
-    else:
-        cv_store.remove_clone(base)
-        cv_store.touch(base, shape="clone")
+    cv_store.forget_clone(base)
     if new_name:
         # Le premier lancement est passé : l'accueil ne se rouvre plus sur la première version.
         main = _base()
@@ -480,4 +340,9 @@ async def apply(body: ApplyIn) -> ApplyOut:
         "experiences": len(merged.experiences) - len(before.experiences),
         "projects": len(merged.projects) - len(before.projects),
     }
-    return ApplyOut(added=added, compile=await compile_now(slug), slug=slug)
+    compiled = await compile_now(slug)
+    if body.import_id is not None and body.keep is not None:
+        _, compiled = await _fit(
+            base, style, _guess(body.import_id).pages, compiled, lambda: compile_now(slug)
+        )
+    return ApplyOut(added=added, compile=compiled, slug=slug)

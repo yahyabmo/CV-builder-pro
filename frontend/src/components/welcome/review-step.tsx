@@ -8,10 +8,9 @@ import { Button } from '@/components/ui/button'
 import type { Route } from '@/hooks/use-route'
 import { api } from '@/lib/api'
 import { clearIntent, readIntent } from '@/lib/welcome-intent'
-import type { ApplyBaseResult, CloneResult, CVContent, ImportCheck, ImportResult, Section, StyleFinding } from '@/lib/types'
+import type { ApplyBaseResult, CVContent, ImportCheck, ImportResult, Section, StyleFinding } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-import { ClonePanel, type CloneState } from './clone-panel'
 import { DoneDialog, finalized, ItemEditor, summary } from './fields'
 import { FlowHeader } from './welcome-flow'
 
@@ -68,12 +67,8 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
   const [keepPhoto, setKeepPhoto] = useState(true)
   const [open, setOpen] = useState<{ section: string; item: number | null } | null>(null)
   const [view, setView] = useState<'sections' | 'form'>('sections')
-  // La forme du CV : le clone de son PDF (par défaut), proche de lui, ou le style de l'appli.
-  const [shape, setShape] = useState<'clone' | 'mine' | 'app'>('clone')
-  const [clone, setClone] = useState<CloneState>({ status: 'idle' })
-  const cloned = useRef<string | null>(null)
-  // La forme choisie à la main : un clone peu fidèle ne la remplace pas.
-  const shapeChosen = useRef(false)
+  // La forme du CV : proche de son PDF (par défaut), ou le style de l'appli.
+  const [shape, setShape] = useState<'mine' | 'app'>('mine')
   // Le style repéré dans le PDF : gardé par défaut, élément par élément.
   const [findings, setFindings] = useState<StyleFinding[] | null>(null)
   const [keep, setKeep] = useState<ReadonlySet<string>>(() => new Set())
@@ -85,8 +80,6 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
       (loaded) => {
         setResult(loaded)
         setContent(loaded.content)
-        // Le clone se calcule tout de suite, pendant la relecture des rubriques.
-        void runClone(loaded.content)
         api.importStyle(id).then(
           ({ findings: found }) => {
             setFindings(found)
@@ -98,24 +91,6 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
       (error: Error) => setFailed(error.message),
     )
   }, [id])
-
-  async function runClone(from: CVContent): Promise<CloneResult | null> {
-    const key = JSON.stringify(from)
-    cloned.current = key
-    setClone({ status: 'running' })
-    try {
-      const out = await api.cloneImport(id, from)
-      if (cloned.current === key) {
-        setClone({ status: 'done', result: out, version: Date.now() })
-        // Un clone que le contrôle juge peu fidèle n'est pas proposé d'abord.
-        if (out.recommended === false && !shapeChosen.current) setShape('mine')
-      }
-      return out
-    } catch (error) {
-      if (cloned.current === key) setClone({ status: 'error', message: (error as Error).message })
-      return null
-    }
-  }
 
   const back = () => navigate({ view: 'welcome', step: 'import' })
   if (failed) {
@@ -144,23 +119,7 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
   const validate = async () => {
     setApplying(true)
     try {
-      let withClone = false
-      const current = clone.status === 'done' && cloned.current === JSON.stringify(final())
-      if (shape === 'clone') {
-        // Le contenu a changé depuis le dernier clone : on le refait avant de valider.
-        const fresh = current ? clone.result : await runClone(final())
-        if (!fresh?.ok) {
-          toast.error('Le clone n’est pas prêt', { description: 'Choisis « Proche du mien » ou « Style de l’appli » dans l’onglet Forme.' })
-          setView('form')
-          return
-        }
-        withClone = true
-      } else if (clone.status === 'done' && clone.result.ok) {
-        // Notre forme choisie : le clone est gardé à côté, pour y passer plus tard (onglet Style).
-        const fresh = current ? clone.result : await runClone(final()).catch(() => null)
-        withClone = Boolean(fresh?.ok)
-      }
-      const applied = await api.applyBase(final(), id, keepPhoto, shape === 'mine' ? styleKeep : null, intent, withClone, shape === 'clone')
+      const applied = await api.applyBase(final(), id, keepPhoto, shape === 'mine' ? styleKeep : null, intent)
       clearIntent()
       await refresh()
       setDone(applied)
@@ -173,10 +132,6 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
   const total = counts(content, result.counts.skills)
   const mine = shape === 'mine'
   const styleKeep = mine && findings?.length ? [...keep].sort() : null
-  const openForm = () => {
-    setView('form')
-    if (shape === 'clone' && clone.status !== 'running' && cloned.current !== JSON.stringify(final())) void runClone(final())
-  }
 
   return (
     <>
@@ -204,7 +159,7 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
                   type="button"
                   role="radio"
                   aria-checked={view === key}
-                  onClick={() => (key === 'form' ? openForm() : setView(key))}
+                  onClick={() => setView(key)}
                   className={cn('h-7 rounded-md px-3 text-[12.5px] font-medium', view === key ? 'bg-background shadow-xs' : 'text-muted-foreground hover:text-foreground')}
                 >
                   {label}
@@ -239,11 +194,10 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
 
           {view === 'form' ? (
             <div className="flex flex-col gap-4">
-              <div role="radiogroup" aria-label="Forme du CV" className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+              <div role="radiogroup" aria-label="Forme du CV" className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
                 {(
                   [
-                    ['clone', 'Identique au mien (clone)', 'La forme de ton PDF, recopiée en LaTeX.'],
-                    ['mine', 'Proche du mien', 'Notre mise en page, avec ta police, tes couleurs et tes colonnes.'],
+                    ['mine', 'Proche du mien', 'Notre mise en page, avec ta police, tes couleurs, tes colonnes et ton en-tête.'],
                     ['app', "Style de l'appli", "Le style par défaut, que tu changeras dans l'onglet Style."],
                   ] as const
                 ).map(([value, title, hint]) => (
@@ -252,11 +206,7 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
                     type="button"
                     role="radio"
                     aria-checked={shape === value}
-                    onClick={() => {
-                      shapeChosen.current = true
-                      setShape(value)
-                      if (value === 'clone' && clone.status !== 'running' && cloned.current !== JSON.stringify(final())) void runClone(final())
-                    }}
+                    onClick={() => setShape(value)}
                     className={cn(
                       'flex flex-col items-start gap-1.5 rounded-xl border bg-card surface px-4 py-3.5 text-left transition-colors',
                       shape === value ? 'border-primary ring-2 ring-primary/15' : 'hover:border-primary/40',
@@ -270,9 +220,6 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
                   </button>
                 ))}
               </div>
-              {shape === 'clone' ? (
-                <ClonePanel id={id} state={clone} retry={() => void runClone(final())} Pdf={PdfView} />
-              ) : (
             <StylePanel
               id={id}
               content={final()}
@@ -291,7 +238,6 @@ export function ReviewStep({ id, navigate, onTarget, onStyle, refresh }: ReviewS
               styleKeep={styleKeep}
               showChoices={false}
             />
-              )}
             </div>
           ) : (
             <div className="flex flex-col overflow-hidden rounded-xl border bg-card surface">

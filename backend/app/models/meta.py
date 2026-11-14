@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.application import Application
 
@@ -19,9 +19,6 @@ class CVMeta(BaseModel):
     kind: Literal["base", "cv"] = "cv"
     # « manual » : le .tex a été modifié à la main et devient la source.
     mode: Literal["visual", "manual"] = "visual"
-    # Un CV cloné (clone.json gardé à côté) : « clone » prend la forme du PDF d'origine,
-    # « app » la mise en page de l'appli et son style ; on passe de l'une à l'autre.
-    shape: Literal["clone", "app"] = "clone"
     source: str | None = None
     # Renseignés pour un CV ciblé (phase 5) : l'offre visée.
     company: str | None = None
@@ -38,3 +35,11 @@ class CVMeta(BaseModel):
     welcome: bool = False
     # Pour un CV ciblé : où en est la candidature.
     application: Application = Field(default_factory=Application)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _old_fields(cls, data: object) -> object:
+        # « shape » : la forme d'un CV cloné (clone retiré) ; oublié à la prochaine écriture.
+        if isinstance(data, dict):
+            data.pop("shape", None)
+        return data

@@ -152,13 +152,7 @@ export interface CVSummary {
 export interface CVDetail extends CVSummary {
   content: CVContent
   style: CVStyle
-  /** Le CV a une forme clonée de son PDF d'origine (gardée à côté de lui). */
-  cloned?: boolean
-  /** La forme qu'il prend : le clone, ou la mise en page de l'appli (onglet Style). */
-  shape?: CloneShape
 }
-
-export type CloneShape = 'clone' | 'app'
 
 export interface LatexError {
   message: string
@@ -722,19 +716,6 @@ export interface ImportResult {
   photo: boolean
   checks: ImportCheck[]
   counts: { skills: number; experiences: number; projects: number }
-}
-
-/** Le clone d'un CV importé : sa ressemblance avec le PDF, et ce qui en est repris. */
-export interface CloneResult {
-  available: boolean
-  ok: boolean
-  reason: string | null
-  likeness: number | null
-  fonts: { pdf: string; name: string; badge: string }[]
-  kept: string[]
-  differences: string[]
-  recommended?: boolean
-  warning?: string | null
 }
 
 export interface ApplyBaseResult {

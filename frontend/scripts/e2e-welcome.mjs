@@ -115,17 +115,14 @@ try {
   check(true, 'relecture : titre retouché, expérience ouverte en édition')
   await browser.screenshot(`${out}/relecture.png`)
 
-  // La forme : le clone de ton PDF par défaut, sa note, ton PDF et lui superposés.
+  // La forme : « Proche du mien » par défaut (le clone est retiré) : le style repéré,
+  // élément par élément, et l'aperçu qui le suit.
   await click(byText('[role=radio]', 'Forme'))
-  await browser.waitFor(bodyHas('Ressemblance avec ton PDF'), 120000)
-  const likeness = await browser.evaluate(`Number(document.querySelector('[aria-label^="Ressemblance"]').getAttribute('aria-label').match(/\\d+/)[0])`)
-  await browser.waitFor(`document.querySelectorAll('[aria-label="Ton PDF et le clone superposés"] canvas').length >= 2`, 30000)
-  check(likeness >= 80 && (await browser.evaluate(`!!document.querySelector('input[aria-label="Part du clone affichée"]')`)), `clone de ton PDF : ${likeness} % de ressemblance, curseur de comparaison`)
-  await browser.screenshot(`${out}/import-clone.png`)
-
-  // « Proche du mien » : le style repéré, élément par élément, et l'aperçu qui le suit.
-  await click(byText('[role=radio]', 'Proche du mien'))
-  await browser.waitFor(bodyHas('Repéré dans ton PDF'), 15000)
+  check(
+    await browser.evaluate(`${byText('[role=radio]', 'Proche du mien')}.getAttribute('aria-checked') === 'true' && !${bodyHas('Identique au mien')}`),
+    'forme : « Proche du mien » choisi d’office, plus de clone',
+  )
+  await browser.waitFor(bodyHas('Repéré dans ton PDF'), 30000)
   await browser.waitFor(`[...document.querySelectorAll('canvas')].length >= 2`, 30000)
   check(
     await browser.evaluate(`${bodyHas('PT Serif')} && document.querySelectorAll('input[aria-label^="Reprendre"]:checked').length >= 6`),
@@ -135,7 +132,7 @@ try {
   await click(byText('[role=radio]', "Style de l'appli"))
   await browser.waitFor(`document.querySelectorAll('canvas').length >= 2`, 30000)
   check(true, "style de l'appli : aperçu compilé")
-  await click(byText('[role=radio]', 'Identique au mien'))
+  await click(byText('[role=radio]', 'Proche du mien'))
   await click(byText('[role=radio]', 'Rubriques'))
 
   await click(byText('button', 'Valider ce CV'))
@@ -144,7 +141,7 @@ try {
   const status = await (await fetch(`${API}/api/welcome`)).json()
   check(imported.header.headline === 'Data Science & IA (relu)' && imported.header.photo === 'photo.jpg' && !status.show, 'CV validé : retouche gardée, photo reprise, accueil refermé')
   const source = (await (await fetch(`${API}/api/cvs/base/source`)).json()).tex
-  check(source.includes('CV cloné') && source.includes('PTSerif'), 'CV de base validé en clone : la forme du PDF, en PT Serif')
+  check(!source.includes('CV cloné') && source.includes('PTSerif'), 'CV de base validé proche du PDF : notre mise en page, en PT Serif')
   const library = await (await fetch(`${API}/api/library`)).json()
   check(library.skills.length > 15 && library.projects.length >= 4, `bibliothèque remplie (${library.skills.length} compétences, ${library.projects.length} projets)`)
   await browser.screenshot(`${out}/accueil-fin.png`)
@@ -152,19 +149,11 @@ try {
   await browser.waitFor(`location.hash === '#/cv/base'`, 5000)
   check(true, '« Ajuster le style » ouvre le CV de base')
 
-  // La forme du CV cloné, dans l'onglet Style : la mise en page de l'appli, puis retour au clone.
-  const tex = async () => (await (await fetch(`${API}/api/cvs/base/source`)).json()).tex
+  // L'onglet Style s'ouvre directement sur ses réglages (plus de choix de forme).
   await browser.waitFor(byText('[role=tab]', 'Style'), 10000)
   await browser.evaluate(`(() => { const t = ${byText('[role=tab]', 'Style')}; t.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); t.click(); return true })()`)
-  await browser.waitFor(byText('[role=radio]', 'Copie de ton PDF'), 10000)
-  check(await browser.evaluate(`${byText('[role=radio]', 'Copie de ton PDF')}.getAttribute('aria-checked') === 'true'`), 'onglet Style : « Forme du CV », la copie du PDF choisie')
-  await click(byText('[role=radio]', "Mise en page de l'appli"))
   await browser.waitFor(byText('button', 'Couleurs'), 30000)
-  check(!(await tex()).includes('CV cloné'), "forme : la mise en page de l'appli, réglages de style revenus")
-  await browser.screenshot(`${out}/forme-appli.png`)
-  await click(byText('[role=radio]', 'Copie de ton PDF'))
-  await browser.waitFor(`!${byText('button', 'Couleurs')}`, 30000)
-  check((await tex()).includes('CV cloné'), 'forme : retour à la copie du PDF, sans réimporter')
+  check(!(await browser.evaluate(bodyHas('Copie de ton PDF'))), 'onglet Style : les réglages, sans « Forme du CV »')
 
   // ─── Saisie à la main, par « Remplacer par un autre… » du menu de ce CV classique ───
   const baseMenu = (name) => `document.querySelector('button[aria-label="Menu de ${name}"]')`

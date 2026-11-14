@@ -176,7 +176,11 @@ class ImportedEducation(_Out):
     title: str = Field(description="Le diplôme ou la formation.")
     place: str = Field(description="L'établissement et la ville.")
     dates: str
-    description: str = ""
+    description: str = Field(default="", description="Le texte courant sous la formation.")
+    bullets: list[str] = Field(
+        default_factory=list,
+        description="Les puces sous la formation, une par élément, telles qu'écrites.",
+    )
 
 
 class ImportedExperience(_Out):

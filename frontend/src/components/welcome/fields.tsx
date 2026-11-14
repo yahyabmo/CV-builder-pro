@@ -25,6 +25,7 @@ export const FIELDS: Record<Kind, Field[]> = {
     { key: 'place', label: 'Établissement et ville' },
     { key: 'dates', label: 'Dates', placeholder: 'ex. 2024 – 2027' },
     { key: 'description', label: 'Précision, facultative', multiline: true, wide: true },
+    { key: 'bullets', label: 'Puces, une par ligne (facultatif)', lines: true, wide: true },
   ],
   experience: [
     { key: 'title', label: 'Intitulé', placeholder: 'ex. Stage Data Scientist' },
@@ -56,7 +57,7 @@ export const FIELDS: Record<Kind, Field[]> = {
 export function blankItem(kind: Kind): Item {
   switch (kind) {
     case 'education':
-      return { title: '', place: '', dates: '', description: '' }
+      return { title: '', place: '', dates: '', description: '', bullets: [] }
     case 'experience':
       return { title: '', tag: '', place: '', dates: '', bullets: [] }
     case 'projects':

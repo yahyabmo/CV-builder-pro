@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from app.models.content import CVContent
 from app.services.clone.reading import Line, Word
-from app.services.clone.structure import Block, Structure, key
+from app.services.clone.structure import Block, Structure, is_marker, key
 
 # ─── Les chemins ─────────────────────────────────────────────────────────────
 
@@ -28,6 +28,22 @@ ITEM_FIELDS = {
     "languages": ("name", "level"),
     "grid": ("text",),
 }
+
+
+def _first_item_word(section) -> str:
+    """La clé du premier mot du premier élément d'une rubrique (« Arabe » pour des langues)."""
+    if not section.items:
+        return ""
+    item = section.items[0]
+    if isinstance(item, str):
+        text = item
+    else:
+        text = next(
+            (getattr(item, f) for f in ("name", "text", "title", "label") if getattr(item, f, "")),
+            "",
+        )
+    words = [key(w) for w in strip_marks(text).split() if key(w)]
+    return words[0] if words else ""
 
 
 def contacts(content: CVContent):
@@ -158,10 +174,32 @@ class Locator:
         self.hits: dict[str, Hit] = {}
         # La rubrique de la page qui porte le titre de chaque rubrique du contenu.
         self.section_block: dict[str, Block] = {}
+        # Les libellés écrits en tête de ligne (« Langues : Français… ») : une rubrique qui porte
+        # ce nom est là, pas sous un titre de la page qui le contient seulement.
+        found: dict[str, list[tuple[list[Word], Line]]] = {}
+        for page in structure.pages:
+            for line in page.lines:
+                words = [w for w in line.words if not is_marker(w.text)][:6]
+                for n, w in enumerate(words):
+                    if w.text.endswith(":"):
+                        k = key(" ".join(x.text for x in words[: n + 1]))
+                        named = [x for x in words[: n + 1] if key(x.text)]
+                        found.setdefault(k, []).append((named, line))
+                        break
+        # Les mots du libellé de ligne qui nomme une rubrique : la ligne doit porter aussi son
+        # premier élément (« Langues : Arabe… » pour les langues ; pas une puce de projet qui
+        # commence par « Compétences : »).
+        self.label_words: dict[str, list[Word]] = {}
+        for s in content.sections:
+            first = _first_item_word(s)
+            for named, line in found.get(key(s.title), []):
+                if first and any(key(w.text) == first for w in line.words):
+                    self.label_words[s.id] = named
+                    break
         for s in content.sections:
             k = key(s.title)
             block = next((b for b in structure.blocks if key(b.title_text) == k), None)
-            if block is None and k:
+            if block is None and k and s.id not in self.label_words:
                 block = next(
                     (
                         b
@@ -195,6 +233,15 @@ class Locator:
             path = f"{sid}.title"
             words = [w for line in block.title_lines for w in line.words]
             if words and not any(id(w) in self.used for w in words):
+                self.hits[path] = Hit(path, words)
+                self.used.update(map(id, words))
+        # Une rubrique sans titre de la page, nommée comme un libellé de ligne : son titre là.
+        for s in self.content.sections:
+            path = f"{s.id}.title"
+            words = self.label_words.get(s.id)
+            if not s.visible or path in self.hits or s.id in self.section_block or not words:
+                continue
+            if not any(id(w) in self.used for w in words):
                 self.hits[path] = Hit(path, words)
                 self.used.update(map(id, words))
         for path, text, sid in jobs:

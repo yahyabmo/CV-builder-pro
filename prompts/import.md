@@ -15,7 +15,9 @@ Règles absolues :
   ligne (un intitulé et sa date, par exemple) : ce n'est pas du texte du CV, ne
   le recopie jamais dans un champ.
 - Une puce par élément de `bullets`, sans le signe de puce ; une puce coupée en
-  fin de ligne reste une seule puce. Les projets aussi ont leurs `bullets`.
+  fin de ligne reste une seule puce. Les projets et les formations aussi ont
+  leurs `bullets` : les lignes à puce sous une formation vont dans ses
+  `bullets`, pas dans sa `description`.
 - Les compétences gardent leurs groupes s'il y en a (« Langages : Python,
   Java ») ; une liste de compétences sans groupes (une puce par compétence)
   donne un groupe par puce, avec un `label` vide. Ne nomme jamais un groupe

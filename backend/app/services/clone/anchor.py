@@ -590,7 +590,9 @@ def infer(
         ]
         lane_right = max((extents.get((page, n), (0, right))[1] for n in lanes), default=right)
         size = max(w.size for w in body)
-        limit = min([lane_right, *[x - 0.4 * size for x in neighbours]])
+        # Jusqu'au milieu du blanc qui la sépare de sa voisine (l'autre moitié est à elle : une
+        # date alignée à droite qui s'allonge vient vers la gauche).
+        limit = min([lane_right, *[(right + x) / 2 - 0.2 * size for x in neighbours]])
         x1 = max(right, limit)
         lefts = [
             other.x1
@@ -604,7 +606,7 @@ def infer(
         lane_left = min((extents.get((page, n), (x_text, 0))[0] for n in lanes), default=x_text)
         # L'alignement : à droite, au centre ou à gauche de sa colonne.
         align = "left"
-        lo = max([lane_left, *[x + 0.4 * size for x in lefts]])
+        lo = max([lane_left, *[(x + x_text) / 2 + 0.2 * size for x in lefts]])
         width_lane = max(lane_right - lane_left, 1)
         xs1 = [line.x1 for line in lines]
         xs0 = [
@@ -638,6 +640,8 @@ def infer(
             if steps_here
             else leadings.get(round(dominant.size * 2) / 2, round(dominant.size * 1.25, 2))
         )
+        # Jamais moins que la taille du texte : deux lignes qui coulent ne se recouvrent pas.
+        leading = max(leading, round(1.05 * size, 2))
         ascent = max(max(w.baseline - w.top for w in top_line.words), 0.8 * size)
         marker = None
         if marker_word is not None:

@@ -93,14 +93,30 @@ function EducationEditor({ id, items, edit }: { id: string; items: EducationItem
       items={items}
       edit={edit}
       addLabel="Ajouter une formation"
-      newItem={() => ({ title: '', place: '', dates: '', description: '' })}
+      newItem={(): EducationItem => ({ title: '', place: '', dates: '', description: '', bullets: [] })}
     >
       {(item, i) => (
-        <div className="grid grid-cols-2 gap-2">
-          <Field className="col-span-2" label="Diplôme" value={item.title} onChange={(v) => edit((l) => void (l[i].title = v), `${id}.${i}.title`)} />
-          <Field label="Établissement" value={item.place} onChange={(v) => edit((l) => void (l[i].place = v), `${id}.${i}.place`)} />
-          <Field label="Dates" value={item.dates} onChange={(v) => edit((l) => void (l[i].dates = v), `${id}.${i}.dates`)} />
-          <Field className="col-span-2" multiline label="Description" placeholder={RICH_HINT} value={item.description} onChange={(v) => edit((l) => void (l[i].description = v), `${id}.${i}.description`)} />
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Field className="col-span-2" label="Diplôme" value={item.title} onChange={(v) => edit((l) => void (l[i].title = v), `${id}.${i}.title`)} />
+            <Field label="Établissement" value={item.place} onChange={(v) => edit((l) => void (l[i].place = v), `${id}.${i}.place`)} />
+            <Field label="Dates" value={item.dates} onChange={(v) => edit((l) => void (l[i].dates = v), `${id}.${i}.dates`)} />
+            <Field className="col-span-2" multiline label="Description" placeholder={RICH_HINT} value={item.description} onChange={(v) => edit((l) => void (l[i].description = v), `${id}.${i}.description`)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[12px] font-medium text-foreground/75">Puces</span>
+            <BulletsEditor
+              id={`${id}-${i}-bullets`}
+              items={item.bullets ?? []}
+              addLabel="Ajouter une puce"
+              edit={(mutate, group) =>
+                edit((l) => {
+                  l[i].bullets ??= []
+                  mutate(l[i].bullets)
+                }, group)
+              }
+            />
+          </div>
         </div>
       )}
     </ItemList>

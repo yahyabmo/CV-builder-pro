@@ -276,6 +276,21 @@ def vocabulary(text: str) -> bool:
     )
 
 
+def restore_first_letter(title: str) -> str:
+    """Un titre dont la lecture d'un scan a perdu la première lettre (« OMPÉTENCES ») : la
+    lettre rendue, quand un seul mot de rubrique y correspond (« COMPÉTENCES »)."""
+    k = key(title)
+    if not k or any(k.startswith(word) for word in VOCABULARY):
+        return title
+    found = {word[0] for word in VOCABULARY if len(word) >= 6 and k.startswith(word[1:])}
+    if len(found) != 1:
+        return title
+    letter = found.pop()
+    stripped = title.lstrip()
+    letter = letter.upper() if stripped[:1].isupper() else letter
+    return title[: len(title) - len(stripped)] + letter + stripped
+
+
 def _lane_bodies(page: Page, page_lanes: list[tuple[float, float]], default: tuple) -> dict:
     """Le style courant de chaque colonne (une colonne de couleur a le sien)."""
     counts: dict[int, Counter] = {}

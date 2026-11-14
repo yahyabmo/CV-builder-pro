@@ -109,6 +109,7 @@
 
 \BLOCK{if sec.kind == "education"}
 \BLOCK{for it in sec.items}
+\BLOCK{set n = loop.index0}
 \BLOCK{if not loop.first}
 \entre
 \BLOCK{endif}
@@ -121,6 +122,14 @@
 \VAR{head}
 \BLOCK{elif it.description.strip()}
 \VAR{rich(it.description)}
+\BLOCK{endif}
+\BLOCK{if it.bullets}
+\begin{itemize}
+\BLOCK{for bullet in it.bullets}
+\VAR{mark("bullet", sec.id, n, loop.index0)}
+    \item \VAR{rich(bullet)}
+\BLOCK{endfor}
+\end{itemize}
 \BLOCK{endif}
 
 \BLOCK{endfor}

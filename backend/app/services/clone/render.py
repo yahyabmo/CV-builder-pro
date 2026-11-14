@@ -112,6 +112,10 @@ class Writer:
             if path in placed or snapshot.get(path) == text or ".bullets." in path:
                 continue
             bits = path.split(".")
+            anchor = self._outside_anchor(path, sid, placed)
+            if anchor is not None:
+                out.setdefault(anchor.id, []).append(path)
+                continue
             if bits[0] in ("name", "headline", "summary", "contact") or bits[-1] == "title":
                 continue
             plan = self.layout.sections.get(sid or "")
@@ -133,6 +137,26 @@ class Writer:
             anchor = max(single or mates, key=lambda u: (u.y + u.end, u.x0))
             out.setdefault(anchor.id, []).append(path)
         return out
+
+    def _outside_anchor(self, path: str, sid: str | None, placed: set[str]) -> Unit | None:
+        """Un champ d'en-tête, de coordonnées ou un titre de rubrique sans place sur la page :
+        l'unité où l'écrire (le libellé devant sa coordonnée, le titre devant sa rubrique,
+        une coordonnée après la dernière, un texte d'en-tête sous l'en-tête)."""
+        bits = path.split(".")
+        units = [u for u in self.layout.units if u.original]
+        if bits[0] == "contact" and len(bits) == 3:
+            own = f"contact.{bits[1]}"
+            return next((u for u in units if own in u.original), None)
+        if bits[0] == "contact":
+            mine = [u for u in units if any(p.startswith("contact.") for p in u.original)]
+            return max(mine, key=lambda u: (u.page, u.y, u.x0), default=None)
+        if bits[0] in ("name", "headline", "summary"):
+            mine = [u for u in units if set(u.original) & {"name", "headline", "summary"}]
+            return max(mine, key=lambda u: (u.page, u.y + u.end), default=None)
+        if bits[-1] == "title" and sid:
+            mine = [u for u in units if u.section == sid and u.role not in ("title",)]
+            return min(mine, key=lambda u: (u.page, u.y, u.x0), default=None)
+        return None
 
     # ─── Encres ───
     def color(self, hex_: str | None) -> str:
@@ -403,6 +427,13 @@ class Writer:
         """Le texte d'une unité qui coule : ses champs d'aujourd'hui et ses textes fixes ;
         ``extra`` : des champs sans place à elle, ajoutés à la fin."""
         pieces: list[tuple[str, bool]] = []  # (latex, est un champ)
+        extra = list(extra or [])
+        # Le libellé d'une coordonnée sans place : juste devant elle.
+        labels = {
+            p.rsplit(".", 1)[0]: p
+            for p in extra
+            if p.startswith("contact.") and p.endswith(".label")
+        }
         for part in unit.parts:
             if part.path is None:
                 pieces.append(("{" + self.ink(part.ink) + " " + escape(part.text) + "}", False))
@@ -412,7 +443,19 @@ class Writer:
             if text is None:
                 pieces.append(("", True))
                 continue
-            pieces.append((self.field_text(part, text), True))
+            label = labels.pop(path, None)
+            lead = ""
+            if label is not None and (value := current(self.content, label)):
+                extra.remove(label)
+                lead = (
+                    self.field_text(Part(path=label, ink=part.ink), value)
+                    + "{"
+                    + self.ink(part.ink)
+                    + " "
+                    + escape(" : ")
+                    + "}"
+                )
+            pieces.append((lead + self.field_text(part, text), True))
         # Un séparateur dont un voisin a disparu (un champ vidé) part avec lui.
         out = []
         for n, (latex, is_field) in enumerate(pieces):
@@ -427,14 +470,24 @@ class Writer:
                     continue
             out.append(latex)
         main = next((p.ink for p in unit.parts if p.path), unit.parts[0].ink if unit.parts else 0)
+        before: list[str] = []
         for path in extra or []:
             text = current(self.content, path)
-            if text:
-                ink = "{" + self.ink(main) + " "
-                out.append(
-                    ink + escape(" – ") + "}" + self.field_text(Part(path=path, ink=main), text)
-                )
-        return "".join(out)
+            if not text:
+                continue
+            ink = "{" + self.ink(main) + " "
+            written = self.field_text(Part(path=path, ink=main), text)
+            bits = path.split(".")
+            if (bits[0] == "contact" and len(bits) == 3) or bits[-1] == "title":
+                # Un libellé, un titre : devant, « Libellé : texte ».
+                before.append(written + ink + escape(" : ") + "}")
+            elif bits[0] == "contact":
+                out.append(ink + escape(" | ") + "}" + written)
+            elif bits[0] in ("name", "headline", "summary"):
+                out.append("\\newline " + written)
+            else:
+                out.append(ink + escape(" – ") + "}" + written)
+        return "".join(before + out)
 
     def list_text(self, unit: Unit, items: list[int], extra: list[str] | None = None) -> str:
         """Une liste écrite à la suite : le modèle du premier élément, pour chacun."""
@@ -477,9 +530,13 @@ class Writer:
             + "}"
         )
         rendered = []
+        own = [
+            p for p in extra or [] if p.startswith(f"{unit.section}.") and p.split(".")[1].isdigit()
+        ]
+        outside = [p for p in extra or [] if p not in own]
         for n in items:
             paths = {p.path: _remap(p.path, n) for p in template if p.path}
-            mine = [p for p in extra or [] if p.split(".")[1] == str(n)]
+            mine = [p for p in own if p.split(".")[1] == str(n)]
             text = self.parts_text(Unit(**{**unit.model_dump(), "parts": template}), paths, mine)
             if text:
                 rendered.append(text)
@@ -487,6 +544,13 @@ class Writer:
             "{" + self.ink(p.ink) + " " + escape(p.text) + "}" for p in prefix if p.path is None
         )
         tail_text = "".join("{" + self.ink(p.ink) + " " + escape(p.text) + "}" for p in suffix)
+        if outside:
+            # Un titre de rubrique sans place : devant la liste.
+            lead = self.parts_text(
+                Unit(**{**unit.model_dump(), "parts": template[:1]}), {}, outside
+            )
+            first = self.parts_text(Unit(**{**unit.model_dump(), "parts": template[:1]}), {}, [])
+            head = lead[: len(lead) - len(first)] + head if lead.endswith(first) else head
         return head + joiner.join(rendered) + tail_text
 
     def reflow(self, unit: Unit, text: str, marker: bool = True) -> str:

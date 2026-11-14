@@ -29,6 +29,7 @@ export interface EducationItem {
   place: string
   dates: string
   description: string
+  bullets?: string[]
 }
 
 export interface SkillGroup {

@@ -51,6 +51,8 @@ class EducationItem(_Model):
     place: str
     dates: str
     description: str = ""
+    # Des puces sous la formation (cours suivis, mention…), quand le CV en a.
+    bullets: list[str] = Field(default_factory=list)
 
 
 class EducationSection(_SectionBase):

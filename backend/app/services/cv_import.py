@@ -285,7 +285,11 @@ def to_content(cv: ImportedCV, with_photo: bool, template: CVContent | None = No
         if isinstance(section, EducationSection):
             section.items = [
                 EducationItem(
-                    title=e.title, place=e.place, dates=e.dates, description=e.description
+                    title=e.title,
+                    place=e.place,
+                    dates=e.dates,
+                    description=e.description,
+                    bullets=[b for b in e.bullets if b.strip()],
                 )
                 for e in cv.education
             ]

@@ -34,7 +34,15 @@ from app.models.content import (
 )
 from app.services.clone import fields as F
 from app.services.clone.reading import Line, Page, Word
-from app.services.clone.structure import SEPARATOR, Block, Structure, analyse, is_marker, key
+from app.services.clone.structure import (
+    SEPARATOR,
+    Block,
+    Structure,
+    analyse,
+    is_marker,
+    key,
+    restore_first_letter,
+)
 from app.text import slugify
 
 # Les champs où un mot en gras au milieu du texte garde sa marque.
@@ -155,7 +163,7 @@ def _bullet_lists(content: CVContent) -> list[tuple[str, list[str], callable]]:
     for s in content.sections:
         if not s.visible:
             continue
-        if s.kind in ("experience", "projects"):
+        if s.kind in ("experience", "projects", "education"):
             for n, item in enumerate(s.items):
 
                 def setter(values: list[str], item=item) -> None:
@@ -179,7 +187,7 @@ def _fix_bullets(content: CVContent, structure: Structure, report: Report) -> bo
     for prefix, bullets, setter in _bullet_lists(content):
         found = [hits.get(f"{prefix}{k}") for k in range(len(bullets))]
         located = [h for h in found if h is not None]
-        if len(located) < 2 or not any(pages.marker(h) for h in located):
+        if not located or not any(pages.marker(h) or _inner_markers(h, pages) for h in located):
             continue
         out: list[str] = []
         previous: F.Hit | None = None
@@ -208,7 +216,9 @@ def _fix_bullets(content: CVContent, structure: Structure, report: Report) -> bo
                 for line in lines[1:]:
                     words = [w for w in line.words if w in hit.words]
                     if words and _starts_with_marker(words, line, pages.page_of[id(words[0])]):
-                        starts.append(words[0].text)
+                        first = next((w.text for w in words if not is_marker(w.text)), "")
+                        if first:
+                            starts.append(first)
                 pieces = _split_at(text, starts)
                 if len(pieces) > 1:
                     out += pieces
@@ -271,6 +281,44 @@ def _split_lists(content: CVContent, structure: Structure, report: Report) -> bo
     return changed
 
 
+def _description_bullets(content: CVContent, structure: Structure, report: Report) -> bool:
+    """La description d'une formation ou d'un projet écrite en lignes à puces sur la page :
+    ses puces."""
+    hits = F.Locator(structure, content).locate()
+    pages = _Pages(structure)
+    changed = False
+    for s in content.sections:
+        if not isinstance(s, (EducationSection, ProjectsSection)) or not s.visible:
+            continue
+        for n, item in enumerate(s.items):
+            hit = hits.get(f"{s.id}.{n}.description")
+            if item.bullets or hit is None:
+                continue
+            lines: list[Line] = []
+            for w in hit.words:
+                line = pages.line_of[id(w)]
+                if not lines or lines[-1] is not line:
+                    lines.append(line)
+            starts = []
+            for line in lines:
+                words = [w for w in line.words if w in hit.words]
+                if words and _starts_with_marker(words, line, pages.page_of[id(words[0])]):
+                    first = next((w.text for w in words if not is_marker(w.text)), "")
+                    if first:
+                        starts.append(first)
+            if len(starts) < 2:
+                continue
+            text = item.description.replace("\n", " ").lstrip("•·-– ").strip()
+            pieces = _split_at(text, starts[1:])
+            if len(pieces) < 2:
+                continue
+            item.bullets = [p.lstrip("•·-– ").strip() for p in pieces]
+            item.description = ""
+            report.split += len(pieces) - 1
+            changed = True
+    return changed
+
+
 def _merge_twins(content: CVContent, structure: Structure) -> bool:
     """Deux rubriques du même genre et du même titre (l'IA a mis le bénévolat à part, sous
     le même « EXPÉRIENCE ») : une seule, ses entrées dans l'ordre de la page."""
@@ -300,6 +348,57 @@ def _merge_twins(content: CVContent, structure: Structure) -> bool:
         s.visible = False
         changed = True
     return changed
+
+
+def _titles_from_labels(content: CVContent, structure: Structure) -> bool:
+    """Plusieurs rubriques au même titre, tirées d'une seule liste de la page (« Langues : … »,
+    « Compétences transversales : … » sous « Compétences ») : chacune prend le libellé écrit
+    devant sa ligne, que la page montre (sans lui, ce libellé resterait sans champ)."""
+    hits = F.Locator(structure, content).locate()
+    pages = _Pages(structure)
+    groups: dict[str, list] = {}
+    for s in content.sections:
+        if s.visible and s.items and key(s.title):
+            groups.setdefault(key(s.title), []).append(s)
+    changed = False
+    for same in groups.values():
+        if len(same) < 2:
+            continue
+        for s in same:
+            # Un groupe de compétences porte déjà son libellé : seulement les autres listes.
+            if s.kind not in ("languages", "grid", "bullets"):
+                continue
+            mine = [h for p, h in hits.items() if p == f"{s.id}.0" or p.startswith(f"{s.id}.0.")]
+            if not mine:
+                continue
+            # Le premier mot de l'élément sur la page (son nom, pas son niveau).
+            w = min((h.words[0] for h in mine), key=lambda x: (round(x.top), x.x0))
+            line = pages.line_of[id(w)]
+            before = [x for x in line.words if x.x1 <= w.x0 + 0.1 and not is_marker(x.text)]
+            label = " ".join(x.text for x in before).strip().rstrip(":").strip()
+            if (
+                label
+                and re.search(r"[A-Za-zÀ-ÿ]", label)
+                and len(label) <= 40
+                and key(label) != key(s.title)
+            ):
+                s.title = label
+                changed = True
+    return changed
+
+
+def _inner_markers(hit: F.Hit, pages: _Pages) -> bool:
+    """Une ligne d'un champ, après la première, commence par un signe de puce."""
+    lines: list[Line] = []
+    for w in hit.words:
+        line = pages.line_of[id(w)]
+        if not lines or lines[-1] is not line:
+            lines.append(line)
+    for line in lines[1:]:
+        words = [w for w in line.words if w in hit.words]
+        if words and _starts_with_marker(words, line, pages.page_of[id(words[0])]):
+            return True
+    return False
 
 
 def _split_at(text: str, starts: list[str]) -> list[str]:
@@ -486,7 +585,7 @@ def _to_section(section, text: str, top: float, hits: dict[str, F.Hit], pages: _
             if not (getattr(item, name, "") or "").strip():
                 setattr(item, name, text.strip())
                 return
-        if isinstance(section, EducationSection):
+        if isinstance(section, EducationSection) and not item.bullets:
             item.description = (item.description.rstrip() + " " + text).strip()
         else:
             item.bullets.append(text)
@@ -554,6 +653,9 @@ def _titles_from_page(content: CVContent, structure: Structure) -> bool:
     for section in content.sections:
         if not section.visible or section.id in locator.section_block:
             continue
+        # Son titre se lit déjà sur la page (un libellé de ligne, « Langues : … ») : il reste.
+        if f"{section.id}.title" in hits:
+            continue
         words = [
             w
             for path, hit in hits.items()
@@ -590,13 +692,17 @@ def measure(content: CVContent, structure: Structure, report: Report | None = No
     section_of_block: dict[int, set[str]] = {}
     for sid, b in locator.section_block.items():
         section_of_block.setdefault(id(b), set()).add(sid)
-    title_words = {
-        id(w)
-        for b in structure.blocks
-        if id(b) not in section_of_block
-        for line in b.title_lines
-        for w in line.words
-    }
+    # Une rubrique nommée par un libellé de ligne (« Qualités : … ») est sous le titre de la
+    # page où se trouve cette ligne.
+    lines_of = {id(w): line for page in structure.pages for line in page.lines for w in line.words}
+    for sid, label in locator.label_words.items():
+        if sid not in locator.section_block and label:
+            b = structure.block_of(lines_of[id(label[0])])
+            if b is not None:
+                section_of_block.setdefault(id(b), set()).add(sid)
+    # Les mots d'un titre de la page qu'aucun champ n'écrit (« PROFIL », ou « LANGUES &
+    # CENTRES D'INTÉRÊT » quand ses deux rubriques portent le nom de leur ligne) : fixes.
+    title_words = {id(w) for b in structure.blocks for line in b.title_lines for w in line.words}
     covered = {}
     for path, hit in hits.items():
         for w in hit.words:
@@ -631,10 +737,22 @@ def _no_separator(content: CVContent) -> None:
             _put(content, path, re.sub(rf"\s*{SEPARATOR}\s*", " ", text).strip())
 
 
+def _no_repeated_label(content: CVContent) -> None:
+    """Une coordonnée qui répète son libellé (« LinkedIn » : « LinkedIn : prénom-nom ») : le
+    texte sans lui."""
+    for item in F.contacts(content):
+        if not item.label:
+            continue
+        head, colon, rest = item.text.partition(":")
+        if colon and rest.strip() and key(head) == key(item.label):
+            item.text = rest.strip()
+
+
 def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
     """Le contenu complété d'après la page, et le compte rendu."""
     content = content.model_copy(deep=True)
     _no_separator(content)
+    _no_repeated_label(content)
     report = Report()
     titles = lambda: [s.title for s in content.sections if s.visible]  # noqa: E731
     structure = analyse(pages, titles())
@@ -642,7 +760,11 @@ def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
         structure = analyse(pages, titles())
     if _split_lists(content, structure, report):
         structure = analyse(pages, titles())
+    if _description_bullets(content, structure, report):
+        structure = analyse(pages, titles())
     if _merge_twins(content, structure):
+        structure = analyse(pages, titles())
+    if _titles_from_labels(content, structure):
         structure = analyse(pages, titles())
     _add_lines(content, structure, report)
     structure = analyse(pages, titles())
@@ -652,5 +774,6 @@ def complete(content: CVContent, pages: list[Page]) -> tuple[CVContent, Report]:
     for section in content.sections:
         if section.items:
             section.visible = True
+        section.title = restore_first_letter(section.title)
     measure(content, structure, report)
     return content, report

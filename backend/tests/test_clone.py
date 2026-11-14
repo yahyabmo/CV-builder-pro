@@ -521,3 +521,121 @@ def test_two_section_titles_side_by_side_each_get_their_lines() -> None:
         "Randonnée et voyages, lecture de",
         "romans, photographie",
     ]
+
+
+def test_a_title_that_lost_its_first_letter_gets_it_back() -> None:
+    assert structure.restore_first_letter("OMPÉTENCES") == "COMPÉTENCES"
+    assert structure.restore_first_letter("ANGUES") == "LANGUES"
+    assert structure.restore_first_letter("Profil") == "Profil"
+
+
+def test_one_page_list_split_by_the_ai_keeps_its_line_labels() -> None:
+    """Une liste « Compétences » de la page dont l'IA a sorti les langues : la rubrique des
+    langues prend le libellé de sa ligne, et ce libellé ne revient pas comme une langue."""
+    from app.models.content import Language, SkillGroup
+
+    lines = [_styled("COMPÉTENCES", 40, 90, 90, 11, True, "1F4E79")]
+    lines.append(_styled("• Outils : Git, Docker, Linux", 42, 110, 200, 9.5, False, "333333"))
+    lines.append(
+        _styled("• Langues : Anglais (C1), Espagnol (B1)", 42, 124, 220, 9.5, False, "333333")
+    )
+    page = reading.Page(1, 595, 842, lines)
+    content = CVContent.model_validate_json((DEMO_DIR / "content.json").read_text())
+    for section in content.sections:
+        section.items, section.visible = [], False
+    skills = next(s for s in content.sections if s.kind == "skills")
+    skills.title, skills.visible = "COMPÉTENCES", True
+    skills.items = [SkillGroup(label="Outils", text="Git, Docker, Linux")]
+    languages = next(s for s in content.sections if s.kind == "languages")
+    languages.title, languages.visible = "COMPÉTENCES", True
+    languages.items = [Language(name="Anglais", level="C1"), Language(name="Espagnol", level="B1")]
+    fixed, _ = fill.complete(content, [page])
+    out = next(s for s in fixed.sections if s.kind == "languages")
+    assert out.title == "Langues"
+    assert [(i.name, i.level) for i in out.items] == [("Anglais", "C1"), ("Espagnol", "B1")]
+    assert [g.label for g in next(s for s in fixed.sections if s.kind == "skills").items] == [
+        "Outils"
+    ]
+
+
+def test_a_contact_that_repeats_its_label_loses_the_repeat() -> None:
+    from app.models.content import ContactItem
+
+    content = _demo()
+    content.header.contact_lines = [[ContactItem(text="LinkedIn : prenom-nom", label="LinkedIn")]]
+    fill._no_repeated_label(content)
+    assert content.header.contact_lines[0][0].text == "prenom-nom"
+
+
+def test_education_bullets_are_rendered_by_our_template() -> None:
+    from app.latex.render import render
+    from app.models.style import CVStyle
+
+    content = _demo()
+    education = next(s for s in content.sections if s.kind == "education")
+    education.items[0].bullets = ["Cours de recherche opérationnelle", "Mention bien"]
+    tex = render(content, CVStyle())
+    assert "%@ bullet formation 0 1" in tex and "Mention bien" in tex
+
+
+@needs_latex
+def test_an_edited_contact_label_shows_even_if_the_page_had_an_icon(tmp_path: Path) -> None:
+    """Le libellé d'une coordonnée n'était pas sur la page (une icône à sa place) : écrit
+    après le clonage, il apparaît devant sa coordonnée."""
+    from app.latex.compile import compile_tex
+
+    content = _demo()
+    content.header.photo = ""
+    assert build.clone_into(tmp_path, SAMPLE, content, online=False).ok
+    layout = cv_store.load_clone(tmp_path)
+    item = F.contacts(content)[0]
+    item.label = "Adresse postale"
+    assert compile_tex(build.write(tmp_path, layout, content)).ok
+    texts = " ".join(line.text for line in reading.read(tmp_path / "cv.pdf")[0].lines)
+    assert "Adresse postale" in texts
+
+
+def test_a_bulleted_education_description_becomes_bullets() -> None:
+    from app.models.content import EducationItem
+
+    lines = [_styled("FORMATION", 40, 90, 90, 11, True, "1F4E79")]
+    lines.append(_styled("Licence d'informatique", 40, 108, 150, 10, True, "333333"))
+    lines.append(_styled("• Niveau actuel : deuxième année", 42, 122, 200, 9.5, False, "333333"))
+    lines.append(_styled("• Acquis : algorithmique et réseaux", 42, 136, 210, 9.5, False, "333333"))
+    page = reading.Page(1, 595, 842, lines)
+    content = CVContent.model_validate_json((DEMO_DIR / "content.json").read_text())
+    for section in content.sections:
+        section.items, section.visible = [], False
+    education = next(s for s in content.sections if s.kind == "education")
+    education.title, education.visible = "FORMATION", True
+    education.items = [
+        EducationItem(
+            title="Licence d'informatique",
+            place="",
+            dates="",
+            description="Niveau actuel : deuxième année\nAcquis : algorithmique et réseaux",
+        )
+    ]
+    fixed, _ = fill.complete(content, [page])
+    item = next(s for s in fixed.sections if s.kind == "education").items[0]
+    assert item.description == ""
+    assert item.bullets == ["Niveau actuel : deuxième année", "Acquis : algorithmique et réseaux"]
+
+
+def test_sub_bullets_merged_by_the_ai_are_split_again() -> None:
+    """« Sport » puis trois puces sur la page, écrits par l'IA en un seul élément."""
+    lines = [_styled("CENTRES D'INTÉRÊT", 40, 90, 120, 11, True, "1F4E79")]
+    lines.append(_styled("Sport", 40, 108, 40, 9.5, True, "333333"))
+    for n, word in enumerate(("Football", "Boxe", "Natation")):
+        lines.append(_styled(f"• {word}", 50, 122 + 14 * n, 60, 9.5, False, "333333"))
+    lines.append(_styled("• Lecture de romans", 42, 170, 120, 9.5, False, "333333"))
+    page = reading.Page(1, 595, 842, lines)
+    content = CVContent.model_validate_json((DEMO_DIR / "content.json").read_text())
+    for section in content.sections:
+        section.items, section.visible = [], False
+    interests = next(s for s in content.sections if s.kind == "bullets")
+    interests.title, interests.visible = "CENTRES D'INTÉRÊT", True
+    interests.items = ["Sport : Football, Boxe, Natation", "Lecture de romans"]
+    fixed, _ = fill.complete(content, [page])
+    items = next(s for s in fixed.sections if s.kind == "bullets").items
+    assert items[1:] == ["Football", "Boxe", "Natation", "Lecture de romans"]
